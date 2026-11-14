@@ -15,7 +15,7 @@ import SetupScreen from './src/screens/SetupScreen';
 import ReflectionScreen from './src/screens/ReflectionScreen';
 import DayLineScreen from './src/screens/DayLineScreen';
 import RestScreen from './src/screens/RestScreen';
-import AnalysisScreen from './src/screens/AnalysisScreen';
+import CalendarScreen from './src/screens/CalendarScreen';
 import { clearAllData, defaultProfile, loadAll, sampleEntries, saveEntries, saveProfile, upsertEntry } from './src/storage';
 import { sampleLocation, syncReminder } from './src/services';
 import { analyzeVoiceState } from './src/voiceState';
@@ -27,7 +27,7 @@ import { colors } from './src/theme';
 const TABS = [
   { key: 'reflection', label: 'Reflection', icon: 'moon' },
   { key: 'rest', label: 'Rest', icon: 'bed' },
-  { key: 'analysis', label: 'Analysis', icon: 'activity' },
+  { key: 'calendar', label: 'Calendar', icon: 'calendar' },
 ];
 
 /** True while the on-screen keyboard is up, so the nav can step out of the way. */
@@ -52,7 +52,7 @@ function useKeyboardOpen() {
 
 /**
  * Splash on every launch, then setup once, then the evening itself:
- * question -> day line -> rest. Analysis sits beside them in the bottom bar,
+ * question -> day line -> rest. The calendar of past evenings sits beside them in the bottom bar,
  * and the header gear reopens setup to change permissions.
  */
 export default function App() {
@@ -168,11 +168,11 @@ export default function App() {
     screen = (
       <DayLineScreen onSubmit={closeDay} onBack={() => setDraft(null)} onSettings={openSettings} />
     );
-  } else if (tab === 'analysis') {
-    key = 'analysis';
+  } else if (tab === 'calendar') {
+    key = 'calendar';
     nav = true;
     screen = (
-      <AnalysisScreen
+      <CalendarScreen
         entries={entries}
         onLoadSample={() => updateEntries(sampleEntries(entries))}
         onScoreEntries={async (targetEntries) => {
@@ -205,7 +205,8 @@ export default function App() {
     screen = (
       <RestScreen
         entry={latest}
-        onProgress={() => setTab('analysis')}
+        onCalendar={() => setTab('calendar')}
+        onRedo={() => setTab('reflection')}
         onSettings={openSettings}
       />
     );

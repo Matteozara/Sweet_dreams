@@ -65,6 +65,17 @@ function buildSampleMotion(points, durationMs) {
   return motion;
 }
 
+const SAMPLE_NOTES = [
+  'Slow start, but the walk after lunch helped. Evening was quiet.',
+  'Busy day at work. I felt rushed until dinner, then it eased.',
+  'Slept badly, so the morning dragged. Called my sister in the afternoon.',
+  'A good day. Cooked something new and went to bed feeling calm.',
+  'Hard to get going. The appointment went better than I expected.',
+  'Rainy and grey. Stayed in, read a little, felt a bit flat by night.',
+];
+
+const sampleNote = (back) => SAMPLE_NOTES[back % SAMPLE_NOTES.length];
+
 function buildSampleTyping(back) {
   const keystrokes = [];
   let t = 0;
@@ -78,7 +89,7 @@ function buildSampleTyping(back) {
   }
   return {
     type: 'text',
-    text: '',
+    text: sampleNote(back),
     typing: {
       durationMs: t,
       changes: keyCount,
@@ -103,6 +114,7 @@ function buildSampleVoice(back) {
     type: 'audio',
     uri: null,
     durationMs,
+    transcript: sampleNote(back),
     metering,
     audioSource: 'sample',
   };
