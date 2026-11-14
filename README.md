@@ -4,13 +4,19 @@ Prototype of a mental-health check-in app (React Native + Expo).
 
 ## Flow
 
-1. **Home**: title and two buttons, **Test** and **Analysis**.
-2. **Test → Question**: the user answers either by **typing** or by **recording audio** (they choose with a toggle). Recordings can be played back or re-recorded.
-3. **Draw**: the user draws a line with a finger showing how the day went (x = morning → night, y = bad → good).
-4. **Done**: summary with the drawn line.
-5. **Analysis**: list of the check-ins from this session with the answer, the mood line and the average mood.
+1. **Welcome**: "Continue with Google" (placeholder: no real OAuth yet).
+2. **Setup**: what we may measure (movement / location) and the evening reminder time.
+3. **Reflection**: one card, "How was your day?", answered by voice or by keyboard.
+4. **The Day Line**: one line, left to right (morning to night), top is light, bottom is heavy.
+5. **Rest**: sleeping moon, "Goodnight.", and a way into your progress.
+6. **Analysis**: every line layered (oldest faintest, tonight brightest) and the last seven joined end to end.
 
-> Data is kept **in memory only** for now; it's gone when the app reloads. The next step is to add storage (e.g. `expo-sqlite` or `@react-native-async-storage/async-storage`).
+The look follows the Stitch "Pastel Galaxy" design system (tokens in `src/theme.js`).
+
+Profile and entries are stored on the device with AsyncStorage. Each entry keeps the answer
+(text with typing timings, or the audio file URI), the line, the raw finger motion with
+timestamps, and a location sample if movement is allowed. In development builds the Analysis
+screen has a "Load a sample week" button for demos.
 
 ## Setup (Linux / macOS)
 
@@ -36,17 +42,23 @@ Every new terminal: `source .venv/bin/activate` before running `npx expo ...` by
 ## Project structure
 
 ```
-App.js                     screen switching + in-memory state
-index.js                   entry point
-app.json                   Expo config (microphone permission)
-src/theme.js               colours
-src/components/            BigButton, MoodLinePreview
-src/screens/               Home, Question, Draw, Done, Analysis
+App.js                     flow + state (welcome, setup, evening ritual, analysis)
+app.json                   Expo config (microphone, location, notifications)
+src/theme.js               design tokens (colours, type, radii)
+src/line.js                day-line maths, dates, formatting
+src/storage.js             AsyncStorage persistence + sample data
+src/services.js            reminder notification, location, haptics
+src/components/            Backdrop, Buttons, Chrome (header, nav, toggle), Icon, LineArt, TimeSheet
+src/screens/               Welcome, Setup, Reflection, DayLine, Rest, Analysis
 setup_env.sh / run.sh      environment + launch scripts
 ```
 
 ## Libraries
 
-- `expo-audio`: microphone recording and playback
-- `react-native-svg`: drawing the mood line
+- `expo-audio`: microphone recording with live level metering
+- `react-native-svg`: the day line, charts, gradients and icons
+- `@react-native-async-storage/async-storage`: on-device storage
+- `expo-notifications`: the daily evening reminder
+- `expo-location`: one position sample per evening, if allowed
+- `@expo-google-fonts/plus-jakarta-sans` + `expo-font`: typeface
 - Touch handling uses React Native's built-in `PanResponder`

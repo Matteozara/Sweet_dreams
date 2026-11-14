@@ -1,81 +1,144 @@
-import React, { useState } from 'react';
-import { SafeAreaView, StyleSheet, Platform, StatusBar as RNStatusBar } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { useFonts } from 'expo-font';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { PlusJakartaSans_400Regular } from '@expo-google-fonts/plus-jakarta-sans/400Regular';
+import { PlusJakartaSans_500Medium } from '@expo-google-fonts/plus-jakarta-sans/500Medium';
+import { PlusJakartaSans_600SemiBold } from '@expo-google-fonts/plus-jakarta-sans/600SemiBold';
 
-import HomeScreen from './src/screens/HomeScreen';
-import QuestionScreen from './src/screens/QuestionScreen';
-import DrawScreen from './src/screens/DrawScreen';
-import DoneScreen from './src/screens/DoneScreen';
+import Backdrop from './src/components/Backdrop';
+import { BottomNav, FadeIn } from './src/components/Chrome';
+import WelcomeScreen from './src/screens/WelcomeScreen';
+import SetupScreen from './src/screens/SetupScreen';
+import ReflectionScreen from './src/screens/ReflectionScreen';
+import DayLineScreen from './src/screens/DayLineScreen';
+import RestScreen from './src/screens/RestScreen';
 import AnalysisScreen from './src/screens/AnalysisScreen';
+import { loadAll, sampleEntries, saveEntries, saveProfile, upsertEntry } from './src/storage';
+import { sampleLocation, syncReminder } from './src/services';
+import { dayKey } from './src/line';
 import { colors } from './src/theme';
 
-// Today's question. Later this can come from a list / backend.
-const QUESTION = 'How are you feeling right now, and what was the most important moment of your day?';
-
 /**
- * Minimal screen switching with React state (no navigation library needed yet).
- * Flow: home -> question -> draw -> done -> home
- *       home -> analysis -> home
+ * Flow: welcome -> setup -> (reflection -> day line -> rest) every evening.
+ * Analysis sits beside the evening ritual in the bottom bar.
  */
 export default function App() {
-  const [screen, setScreen] = useState('home');
-  const [draft, setDraft] = useState(null);      // answer being built during a test
-  const [entries, setEntries] = useState([]);    // completed tests (in memory for now)
+  const [fontsLoaded, fontError] = useFonts({
+    PlusJakartaSans_400Regular,
+    PlusJakartaSans_500Medium,
+    PlusJakartaSans_600SemiBold,
+  });
+  const [profile, setProfile] = useState(null);
+  const [entries, setEntries] = useState([]);
+  const [tab, setTab] = useState('evening'); // 'evening' | 'analysis'
+  const [draft, setDraft] = useState(null); // tonight's answer, while the line is being drawn
+  const [redoing, setRedoing] = useState(false);
 
-  const startTest = () => {
-    setDraft({ question: QUESTION, startedAt: new Date().toISOString() });
-    setScreen('question');
+  useEffect(() => {
+    loadAll().then((data) => {
+      setEntries(data.entries);
+      setProfile(data.profile);
+    });
+  }, []);
+
+  if (!profile || !(fontsLoaded || fontError)) return <View style={styles.root} />;
+
+  const updateProfile = (patch) => {
+    const next = { ...profile, ...patch };
+    setProfile(next);
+    saveProfile(next);
   };
 
-  const saveAnswer = (answer) => {
-    // answer = { type: 'text', text } | { type: 'audio', audioUri, durationMs }
-    setDraft((d) => ({ ...d, answer }));
-    setScreen('draw');
+  const updateEntries = (next) => {
+    setEntries(next);
+    saveEntries(next);
   };
 
-  const saveDrawing = (moodLine) => {
-    // moodLine = array of { t: 0..1 (time of day), mood: -1..1 }
-    const entry = { ...draft, moodLine, finishedAt: new Date().toISOString(), id: String(Date.now()) };
-    setEntries((list) => [entry, ...list]);
+  const today = entries.find((e) => e.date === dayKey());
+
+  const finishSetup = ({ movement, reminder }) => {
+    updateProfile({ movement, reminder, onboarded: true });
+    syncReminder(reminder);
+  };
+
+  const closeDay = (line) => {
+    const entry = {
+      id: String(Date.now()),
+      date: dayKey(),
+      startedAt: draft.startedAt,
+      finishedAt: new Date().toISOString(),
+      answer: draft.answer,
+      line,
+    };
+    const next = upsertEntry(entries, entry);
+    updateEntries(next);
     setDraft(null);
-    setScreen('done');
+    setRedoing(false);
+    if (profile.movement) {
+      sampleLocation().then((location) => {
+        if (!location) return;
+        setEntries((list) => {
+          const withLocation = list.map((e) => (e.id === entry.id ? { ...e, location } : e));
+          saveEntries(withLocation);
+          return withLocation;
+        });
+      });
+    }
   };
 
-  const goHome = () => {
-    setDraft(null);
-    setScreen('home');
-  };
-
-  let content;
-  switch (screen) {
-    case 'question':
-      content = <QuestionScreen question={QUESTION} onSubmit={saveAnswer} onBack={goHome} />;
-      break;
-    case 'draw':
-      content = <DrawScreen onSubmit={saveDrawing} onBack={() => setScreen('question')} />;
-      break;
-    case 'done':
-      content = <DoneScreen entry={entries[0]} onHome={goHome} onAnalysis={() => setScreen('analysis')} />;
-      break;
-    case 'analysis':
-      content = <AnalysisScreen entries={entries} onBack={goHome} />;
-      break;
-    default:
-      content = <HomeScreen onTest={startTest} onAnalysis={() => setScreen('analysis')} />;
+  let screen;
+  let key;
+  let nav = false;
+  if (!profile.signedIn) {
+    key = 'welcome';
+    screen = <WelcomeScreen onSignIn={() => updateProfile({ signedIn: true })} />;
+  } else if (!profile.onboarded) {
+    key = 'setup';
+    screen = <SetupScreen profile={profile} onDone={finishSetup} />;
+  } else if (tab === 'analysis') {
+    key = 'analysis';
+    nav = true;
+    screen = <AnalysisScreen entries={entries} onLoadSample={() => updateEntries(sampleEntries(entries))} />;
+  } else if (draft) {
+    key = 'line';
+    screen = <DayLineScreen onSubmit={closeDay} onBack={() => setDraft(null)} />;
+  } else if (today && !redoing) {
+    key = 'rest';
+    nav = true;
+    screen = <RestScreen entry={today} onProgress={() => setTab('analysis')} onRedo={() => setRedoing(true)} />;
+  } else {
+    key = 'reflection';
+    nav = true;
+    screen = (
+      <ReflectionScreen onSubmit={(answer) => setDraft({ answer, startedAt: new Date().toISOString() })} />
+    );
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar style="dark" />
-      {content}
-    </SafeAreaView>
+    <SafeAreaProvider>
+      <View style={styles.root}>
+        <StatusBar style="light" />
+        <Backdrop />
+        <FadeIn key={key} style={styles.root}>
+          {screen}
+        </FadeIn>
+        {nav && (
+          <BottomNav
+            active={tab}
+            onChange={setTab}
+            items={[
+              { key: 'evening', label: today && !redoing ? 'Rest' : 'Reflection', icon: 'moon' },
+              { key: 'analysis', label: 'Analysis', icon: 'activity' },
+            ]}
+          />
+        )}
+      </View>
+    </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.background,
-    paddingTop: Platform.OS === 'android' ? RNStatusBar.currentHeight : 0,
-  },
+  root: { flex: 1, backgroundColor: colors.bg },
 });

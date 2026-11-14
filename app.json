@@ -4,11 +4,11 @@
     "slug": "sweet-dreams",
     "version": "0.1.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": false,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Sweet Dreams uses the microphone so you can answer questions with your voice."
+        "NSMicrophoneUsageDescription": "Sweet Dreams uses the microphone so you can answer the evening question with your voice."
       }
     },
     "android": {
@@ -20,10 +20,20 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Sweet Dreams uses the microphone so you can answer questions with your voice."
+          "microphonePermission": "Sweet Dreams uses the microphone so you can answer the evening question with your voice."
         }
       ],
-      "expo-status-bar"
-    ]
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Sweet Dreams notes where you are when you close the day, if you allow movement."
+        }
+      ],
+      "expo-notifications",
+      "expo-status-bar",
+      "expo-font",
+      "expo-asset"
+    ],
+    "backgroundColor": "#13121f"
   }
 }
