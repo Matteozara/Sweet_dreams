@@ -176,7 +176,6 @@ export default function DayLineScreen({ onSubmit, onBack, onSettings }) {
     strokeActive.set(false);
     setStarted(false);
     setCommitted([]);
-    setTouched(false);
   };
 
   const first = committed[0];
@@ -297,7 +296,7 @@ export default function DayLineScreen({ onSubmit, onBack, onSettings }) {
                     <View style={styles.startLine} />
                   </View>
                   <View style={[styles.hint, { width: size.w, height: size.h }]} pointerEvents="none">
-                    <Text style={styles.hintText}>Start at the red line, then draw to Night.</Text>
+                    <Text style={styles.hintText}>Start at Morning, then draw to Night.</Text>
                   </View>
                 </>
               )}
@@ -359,7 +358,7 @@ const styles = StyleSheet.create({
     width: 24,
     zIndex: 20,
     elevation: 20,
-    backgroundColor: 'rgba(255, 59, 48, 0.18)',
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
     justifyContent: 'center',
   },
   startLine: {
@@ -369,7 +368,8 @@ const styles = StyleSheet.create({
     bottom: 10,
     width: 6,
     borderRadius: 3,
-    backgroundColor: '#ff3b30',
+    backgroundColor: '#ffffff',
+    boxShadow: '0 0 10px rgba(255,255,255,0.45)',
   },
   hintText: { fontFamily: font.regular, fontSize: 14, lineHeight: 20, color: colors.faint, textAlign: 'center' },
   actions: { marginTop: 24, gap: 10 },
