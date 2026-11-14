@@ -184,14 +184,18 @@ export default function ReflectionScreen({ onSubmit }) {
     for (let i = 0; i < samples.length; i += 4) sum += samples[i] * samples[i];
     const rms = Math.sqrt(sum / Math.max(1, samples.length / 4)) / 32768;
     const db = 20 * Math.log10(rms || 1e-6);
+    if (meteringLog.current.length < 3000) {
+      meteringLog.current.push([Math.round(ms), Math.round(db * 10) / 10]);
+    }
     meter.current?.push(Math.min(1, Math.max(0.05, (db + 55) / 55)), ms);
   };
   const { stream } = useAudioStream({ sampleRate: 16000, channels: 1, encoding: 'int16', onBuffer });
 
   useEffect(() => () => transcriber.current?.close(), []);
 
-  // Typing dynamics, kept alongside the text for later analysis.
-  const typing = useRef({ startedAt: null, events: [], deletions: 0, last: 0 });
+  // Typing dynamics & audio metering, kept alongside the reflection for v2 analysis.
+  const typing = useRef({ startedAt: null, events: [], keystrokes: [], deletions: 0, last: 0 });
+  const meteringLog = useRef([]);
 
   // Breathing halo around the record orb.
   const pulse = useRef(new Animated.Value(0)).current;
@@ -216,6 +220,7 @@ export default function ReflectionScreen({ onSubmit }) {
       }
       await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
       setAudio(null);
+      meteringLog.current = [];
       meter.current?.reset();
       onWords({ final: '', interim: '' });
       lastTick.current = 0;
@@ -242,7 +247,11 @@ export default function ReflectionScreen({ onSubmit }) {
       const file = await stream.stopFileRecordingAsync().catch(() => null);
       stream.stop();
       await setAudioModeAsync({ allowsRecording: false }).catch(() => {});
-      setAudio({ uri: file?.uri ?? null, durationMs: file ? Math.round(file.duration * 1000) : Math.round(clock.current.audioMs) });
+      setAudio({
+        uri: file?.uri ?? null,
+        durationMs: file ? Math.round(file.duration * 1000) : Math.round(clock.current.audioMs),
+        metering: meteringLog.current,
+      });
       tap();
       // Give the last words a moment to arrive before the answer can be submitted.
       await transcriber.current?.finish();
@@ -258,9 +267,20 @@ export default function ReflectionScreen({ onSubmit }) {
     const now = Date.now();
     const t = typing.current;
     if (t.startedAt === null) t.startedAt = now;
-    if (value.length < t.last) t.deletions += 1;
+    const dt = now - t.startedAt;
+    const isDelete = value.length < t.last;
+    if (isDelete) t.deletions += 1;
+    // Store only timing and key category ('char' | 'backspace' | 'other') — never the character itself.
+    let category = 'char';
+    if (isDelete) {
+      category = 'backspace';
+    } else if (value.length > t.last) {
+      const ch = value.slice(-1);
+      if (ch === ' ' || ch === '\n') category = 'other';
+    }
     t.last = value.length;
-    if (t.events.length < 2000) t.events.push([now - t.startedAt, value.length]);
+    if (t.events.length < 2000) t.events.push([dt, value.length]);
+    if (t.keystrokes.length < 2000) t.keystrokes.push([dt, category]);
     setText(value);
   };
 
@@ -277,6 +297,7 @@ export default function ReflectionScreen({ onSubmit }) {
           changes: t.events.length,
           deletions: t.deletions,
           events: t.events, // [ms since first key, text length]
+          keystrokes: t.keystrokes, // [ms since first key, category]
         },
       });
     } else {
@@ -288,6 +309,8 @@ export default function ReflectionScreen({ onSubmit }) {
         transcript,
         // Kept only when the user corrected the text: what recognition originally heard.
         ...(transcript !== heard.current && { transcriptHeard: heard.current }),
+        metering: audio.metering || [],
+        audioSource: Platform.OS === 'ios' ? 'AVAudioSession.measurement' : 'MediaRecorder',
       });
     }
   };
