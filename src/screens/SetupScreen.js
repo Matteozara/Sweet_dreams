@@ -19,6 +19,7 @@ export default function SetupScreen({ profile, onDone, onBack, editing = false }
   const [reminder, setReminder] = useState(profile.reminder);
   const [picking, setPicking] = useState(false);
   const care = profile.care ?? { therapist: 'Not connected', clinic: 'Not connected' };
+  const [keepEveryTry, setKeepEveryTry] = useState(!!profile.keepEveryTry);
 
   const toggleMovement = async (on) => {
     setMovement(on);
@@ -75,13 +76,30 @@ export default function SetupScreen({ profile, onDone, onBack, editing = false }
                 </View>
               </Card>
               <Text style={styles.note}>Set by your clinic. Ask them to change it.</Text>
+
+              {/* Development only: fills the overlay with real lines instead of
+                  sample weeks, by keeping every drawing rather than one a day. */}
+              {__DEV__ && (
+                <>
+                  <Text style={styles.sectionLabel}>Testing</Text>
+                  <Card style={styles.card}>
+                    <View style={styles.row}>
+                      <View>
+                        <Text style={styles.rowLabel}>Keep every try</Text>
+                        <Text style={styles.rowHint}>Each drawing is kept, not replaced</Text>
+                      </View>
+                      <Toggle label="Keep every try" value={keepEveryTry} onChange={setKeepEveryTry} />
+                    </View>
+                  </Card>
+                </>
+              )}
             </>
           )}
         </View>
 
         <PrimaryButton
           title={editing ? 'Save' : 'Continue'}
-          onPress={() => onDone({ movement, reminder })}
+          onPress={() => onDone({ movement, reminder, keepEveryTry })}
         />
       </View>
 

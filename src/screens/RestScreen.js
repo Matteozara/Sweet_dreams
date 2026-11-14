@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs } from 'react-native-svg';
 import { Header, FadeIn } from '../components/Chrome';
-import { GhostButton, GlassButton } from '../components/Buttons';
+import { GlassButton } from '../components/Buttons';
 import Icon from '../components/Icon';
 import Moon from '../components/Moon';
 import { GlowLine, LineGradient } from '../components/LineArt';
@@ -39,7 +39,7 @@ function TodayLine({ points, canvas }) {
 }
 
 /** Last step: the day is closed. */
-export default function RestScreen({ entry, onProgress, onRedo, onSettings }) {
+export default function RestScreen({ entry, onProgress, onSettings }) {
   return (
     <View style={styles.screen}>
       <Header onSettings={onSettings} />
@@ -60,7 +60,6 @@ export default function RestScreen({ entry, onProgress, onRedo, onSettings }) {
             onPress={onProgress}
             icon={<Icon name="activity" size={18} color={colors.lilac} />}
           />
-          <GhostButton title="Draw again" onPress={onRedo} />
         </View>
       </View>
     </View>

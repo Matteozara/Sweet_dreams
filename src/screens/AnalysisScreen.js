@@ -5,6 +5,7 @@ import { Card, Header } from '../components/Chrome';
 import { GhostButton } from '../components/Buttons';
 import { GlowLine, LineGradient } from '../components/LineArt';
 import { dayKey, keyToDate, meanMood, smoothPath, streak, toPixels } from '../line';
+import { dayScoreAvailable } from '../analysis/dayScore';
 import { buildWeeklyAnalysis } from '../analysis/weekly';
 import { card, colors, font, radius, type } from '../theme';
 
@@ -187,13 +188,15 @@ function StateCard({ title, field, entries, empty, note }) {
   );
 }
 
-export default function AnalysisScreen({ entries, onLoadSample, onDeleteAll, onSettings }) {
+export default function AnalysisScreen({ entries, onLoadSample, onScoreEntries, onDeleteAll, onSettings }) {
   const drawn = useMemo(() => entries.filter((e) => e.line?.points?.length > 1), [entries]);
   const run = streak(drawn);
   const canSample = __DEV__ && onLoadSample && !entries.some((e) => e.sample);
 
   const { weeks, baseline } = useMemo(() => buildWeeklyAnalysis(drawn), [drawn]);
   const [weekIdx, setWeekIdx] = useState(0);
+  const [scoring, setScoring] = useState(false);
+  const [scoreError, setScoreError] = useState(null);
 
   // Default to the most recent week whenever the week list changes.
   useEffect(() => {
@@ -201,6 +204,19 @@ export default function AnalysisScreen({ entries, onLoadSample, onDeleteAll, onS
   }, [weeks.length]);
 
   const activeWeek = weeks[Math.min(weekIdx, Math.max(0, weeks.length - 1))] || null;
+  const unscoredInWeek = activeWeek ? activeWeek.entries.filter((e) => typeof e.dayScore?.score !== 'number') : [];
+
+  const handleScoreMissing = async () => {
+    if (!onScoreEntries || unscoredInWeek.length === 0 || scoring) return;
+    setScoring(true);
+    setScoreError(null);
+    try {
+      const err = await onScoreEntries(unscoredInWeek);
+      if (err) setScoreError(err);
+    } finally {
+      setScoring(false);
+    }
+  };
 
   const confirmDelete = () => {
     Alert.alert(
@@ -272,6 +288,57 @@ export default function AnalysisScreen({ entries, onLoadSample, onDeleteAll, onS
                 <Badge text={`${activeWeek.entries.length} days`} />
               </View>
               <Week entries={activeWeek.entries} />
+            </Card>
+          )}
+
+          {activeWeek && (
+            <Card style={styles.card}>
+              <View style={styles.cardHead}>
+                <Text style={styles.cardTitle}>Overall day score (Gemini)</Text>
+                {activeWeek.dayScore ? (
+                  <Badge text={`Mean ${fmtNum(activeWeek.dayScore.meanScore, 1)} / 10`} tone="ok" />
+                ) : (
+                  <Badge text={dayScoreAvailable ? 'Not scored' : 'API key unset'} />
+                )}
+              </View>
+              {activeWeek.dayScore ? (
+                <View style={styles.metrics}>
+                  <MetricRow
+                    label={`Weekly mean (${activeWeek.dayScore.count} ${activeWeek.dayScore.count === 1 ? 'day' : 'days'})`}
+                    value={`${fmtNum(activeWeek.dayScore.meanScore, 1)} / 10`}
+                  />
+                  <MetricRow
+                    label={`Weekly median (${activeWeek.dayScore.count} ${activeWeek.dayScore.count === 1 ? 'day' : 'days'})`}
+                    value={`${fmtNum(activeWeek.dayScore.medianScore, 1)} / 10`}
+                  />
+                  <MetricRow
+                    label="Latest day score"
+                    value={`${fmtNum(activeWeek.dayScore.latest.score, 1)} / 10`}
+                  />
+                  <MetricRow
+                    label="Daily scores"
+                    value={activeWeek.dayScore.daily
+                      .map((d) => `${WEEKDAYS[keyToDate(d.date).getDay()]} ${fmtNum(d.score, 1)}`)
+                      .join(' · ')}
+                  />
+                  {!!activeWeek.dayScore.latest.rationale && (
+                    <Text style={styles.note}>{activeWeek.dayScore.latest.rationale}</Text>
+                  )}
+                </View>
+              ) : (
+                <Text style={styles.note}>
+                  {dayScoreAvailable
+                    ? 'Scores are generated from your morning-to-night drawing via Gemini.'
+                    : 'Set EXPO_PUBLIC_GEMINI_API_KEY in .env to score drawings automatically.'}
+                </Text>
+              )}
+              {dayScoreAvailable && unscoredInWeek.length > 0 && onScoreEntries && (
+                <GhostButton
+                  title={scoring ? 'Scoring…' : `Score ${unscoredInWeek.length} unscored ${unscoredInWeek.length === 1 ? 'day' : 'days'}`}
+                  onPress={handleScoreMissing}
+                />
+              )}
+              {!!scoreError && <Text style={styles.note}>Gemini error: {scoreError}</Text>}
             </Card>
           )}
 
@@ -457,6 +524,9 @@ export default function AnalysisScreen({ entries, onLoadSample, onDeleteAll, onS
           <View style={styles.stats}>
             <Stat label="Evenings" value={drawn.length} unit={drawn.length === 1 ? 'line' : 'lines'} />
             <Stat label="In a row" value={run} unit={run === 1 ? 'day' : 'days'} />
+            {activeWeek?.dayScore && (
+              <Stat label="Day score" value={fmtNum(activeWeek.dayScore.meanScore, 1)} unit="/ 10" />
+            )}
           </View>
 
           {canSample && <GhostButton title="Load sample weeks" onPress={onLoadSample} />}

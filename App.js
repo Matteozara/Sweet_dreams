@@ -20,6 +20,7 @@ import { clearAllData, defaultProfile, loadAll, sampleEntries, saveEntries, save
 import { sampleLocation, syncReminder } from './src/services';
 import { analyzeVoiceState } from './src/voiceState';
 import { analyzeContentState, answerText } from './src/contentState';
+import { scoreDayLine, scoreDayLineDetailed } from './src/analysis/dayScore';
 import { dayKey } from './src/line';
 import { colors } from './src/theme';
 
@@ -86,16 +87,17 @@ export default function App() {
     saveEntries(next);
   };
 
-  const today = entries.find((e) => e.date === dayKey());
+  // The newest entry for today: with keepEveryTry there can be several.
+  const today = [...entries].reverse().find((e) => e.date === dayKey());
   const latest = today ?? entries[entries.length - 1];
 
-  const finishSetup = ({ movement, reminder }) => {
-    updateProfile({ movement, reminder, onboarded: true });
+  const finishSetup = ({ movement, reminder, keepEveryTry }) => {
+    updateProfile({ movement, reminder, keepEveryTry, onboarded: true });
     syncReminder(reminder);
   };
 
-  const saveSettings = ({ movement, reminder }) => {
-    updateProfile({ movement, reminder });
+  const saveSettings = ({ movement, reminder, keepEveryTry }) => {
+    updateProfile({ movement, reminder, keepEveryTry });
     syncReminder(reminder);
     setSettingsOpen(false);
   };
@@ -109,7 +111,7 @@ export default function App() {
       answer: draft.answer,
       line,
     };
-    const next = upsertEntry(entries, entry);
+    const next = upsertEntry(entries, entry, { keepEveryTry: __DEV__ && profile.keepEveryTry });
     updateEntries(next);
     setDraft(null);
     setTab('rest'); // the evening ends in the wind-down screen
@@ -127,6 +129,14 @@ export default function App() {
       analyzeVoiceState(entry.answer.uri).then((voiceState) => voiceState && patchEntry({ voiceState }));
     }
     analyzeContentState(answerText(entry.answer)).then((contentState) => contentState && patchEntry({ contentState }));
+    scoreDayLine(line).then((dayScore) => {
+      if (!dayScore) return;
+      setEntries((list) => {
+        const withScore = list.map((e) => (e.id === entry.id ? { ...e, dayScore } : e));
+        saveEntries(withScore);
+        return withScore;
+      });
+    });
   };
 
   const openSettings = () => setSettingsOpen(true);
@@ -165,6 +175,21 @@ export default function App() {
       <AnalysisScreen
         entries={entries}
         onLoadSample={() => updateEntries(sampleEntries(entries))}
+        onScoreEntries={async (targetEntries) => {
+          const results = await Promise.all(
+            targetEntries.map(async (e) => ({ id: e.id, res: await scoreDayLineDetailed(e.line) }))
+          );
+          const map = new Map(results.filter((r) => r.res.ok).map((r) => [r.id, r.res.data]));
+          if (map.size > 0) {
+            setEntries((list) => {
+              const nextList = list.map((e) => (map.has(e.id) ? { ...e, dayScore: map.get(e.id) } : e));
+              saveEntries(nextList);
+              return nextList;
+            });
+          }
+          const firstErr = results.find((r) => !r.res.ok)?.res.error;
+          return firstErr || null;
+        }}
         onDeleteAll={async () => {
           await clearAllData();
           setEntries([]);
@@ -181,7 +206,6 @@ export default function App() {
       <RestScreen
         entry={latest}
         onProgress={() => setTab('analysis')}
-        onRedo={() => setTab('reflection')}
         onSettings={openSettings}
       />
     );

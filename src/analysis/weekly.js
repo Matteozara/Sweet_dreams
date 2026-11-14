@@ -1,6 +1,7 @@
 // Per-week grouping and multi-modal v2 analysis.
 
 import { dayKey, keyToDate } from '../line.js';
+import { mean, median } from './stats.js';
 import { analyzeDrawing, aggregateDrawingWeek } from './drawing.js';
 import { analyzeTypingEntry, aggregateTypingWeek } from './typing.js';
 import { analyzeVoiceEntry, aggregateVoiceWeek } from './voice.js';
@@ -73,6 +74,18 @@ export function buildWeeklyAnalysis(entries, { phq9 = 0, sigmaPool = null } = {}
       const drawing = aggregateDrawingWeek(weekEntries);
       const typing = aggregateTypingWeek(weekEntries);
       const voice = aggregateVoiceWeek(weekEntries);
+      const scoredDays = weekEntries
+        .filter((e) => typeof e.dayScore?.score === 'number')
+        .map((e) => ({ date: e.date, ...e.dayScore }));
+      const dayScore = scoredDays.length
+        ? {
+            meanScore: mean(scoredDays.map((d) => d.score)),
+            medianScore: median(scoredDays.map((d) => d.score)),
+            count: scoredDays.length,
+            latest: scoredDays[scoredDays.length - 1],
+            daily: scoredDays,
+          }
+        : null;
 
       const zScores = baseline.ready
         ? {
@@ -94,6 +107,7 @@ export function buildWeeklyAnalysis(entries, { phq9 = 0, sigmaPool = null } = {}
         drawing,
         typing,
         voice,
+        dayScore,
         zScores,
       };
     });
