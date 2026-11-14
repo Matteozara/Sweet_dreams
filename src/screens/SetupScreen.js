@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Header, Toggle } from '../components/Chrome';
+import { Card, Header, Toggle } from '../components/Chrome';
 import { PrimaryButton } from '../components/Buttons';
 import TimeSheet from '../components/TimeSheet';
 import { requestMovement } from '../services';
@@ -27,7 +27,7 @@ export default function SetupScreen({ profile, onDone }) {
         <View>
           <Text style={[type.display, styles.title]}>May we notice?</Text>
 
-          <View style={styles.card}>
+          <Card style={styles.card}>
             <View style={styles.row}>
               <View>
                 <Text style={styles.rowLabel}>Movement</Text>
@@ -49,7 +49,7 @@ export default function SetupScreen({ profile, onDone }) {
                 onChange={(enabled) => setReminder((r) => ({ ...r, enabled }))}
               />
             </View>
-          </View>
+          </Card>
         </View>
 
         <PrimaryButton title="Continue" onPress={() => onDone({ movement, reminder })} />
