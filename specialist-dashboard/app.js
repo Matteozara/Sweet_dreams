@@ -5,7 +5,7 @@ import { clip, mean, median } from '../src/analysis/stats.js';
 import { analyzeDrawing, DP_PER_MM } from '../src/analysis/drawing.js';
 import { analyzeTypingEntry } from '../src/analysis/typing.js';
 import { analyzeVoiceEntry } from '../src/analysis/voice.js';
-import { normalizeFeature } from '../src/analysis/normalization.js';
+import { classifyMotorState, normalizeFeature, SIGMA_MIN } from '../src/analysis/normalization.js';
 import { buildWeeklyAnalysis } from '../src/analysis/weekly.js';
 import {
   renderDayLineSvg,
@@ -16,13 +16,13 @@ import {
 } from './charts.js';
 
 const HEATMAP_FEATURES = [
-  { key: 'drawingSpeed', label: 'Drawing · Hand Speed' },
-  { key: 'drawingPause', label: 'Drawing · Pause Time' },
-  { key: 'drawingJerk', label: 'Drawing · Smoothness' },
-  { key: 'ikdMedian', label: 'Typing · Keystroke Pace' },
+  { key: 'drawingSpeed', label: 'Drawing · Speed (Explor.)', exploratory: true, twoTailed: true },
+  { key: 'drawingPause', label: 'Drawing · Pauses (Explor.)', exploratory: true },
+  { key: 'drawingJerk', label: 'Drawing · Smoothness (Explor.)', exploratory: true },
+  { key: 'ikdMedian', label: 'Typing · Keystroke Pace', twoTailed: true },
   { key: 'ikdMad', label: 'Typing · Rhythm Steadiness' },
-  { key: 'backspaceRate', label: 'Typing · Few Backspaces' },
-  { key: 'voicePause', label: 'Voice · Fluent Speech' },
+  { key: 'backspaceRate', label: 'Typing · Backspace Control' },
+  { key: 'voicePause', label: 'Voice · Speech Fluency', twoTailed: true },
   { key: 'voiceLongPause', label: 'Voice · Few Long Silences' },
   { key: 'dayScoreZ', label: 'Mood · Day Line Score' },
 ];
@@ -45,13 +45,13 @@ function mulberry32(seed) {
 }
 
 /**
- * Generate a biomechanically & clinically realistic 38-day longitudinal record (36 recorded evenings):
+ * Generate a biomechanically & clinically realistic 38-day longitudinal record (38 consecutive evenings):
  * - Sessions 1–5 (back 38..34): Practice / familiarization evenings.
- * - Sessions 6–15 (back 33..23, 1 missed evening at back=28): Healthy Remission Baseline (PHQ-9 < 5, 5.0 = personal norm).
- * - Transition (back 22): Episode onset.
- * - Last 21 calendar days (back 21..1, 1 missed evening at back=11 -> 20 evenings):
- *   Starts in genuine psychomotor slowing (~2.7/10 motor, ~3.5/10 mood, ~245 ms IKD, ~34% speech pauses)
- *   and steadily recovers back into healthy remission (~5.5–5.9/10 motor, ~7.4–8.1/10 mood, ~150 ms IKD, ~16% pauses).
+ * - Sessions 6–15 (back 33..24): Healthy Remission Baseline (PHQ-9 < 5, 5.0 = personal equilibrium).
+ * - Transition (back 23..22): Episode onset.
+ * - Last 21 calendar days (back 21..1 -> exact 3, 7, 14, and 21 evenings for the 3d/7d/14d/21d windows):
+ *   Starts in genuine psychomotor slowing (~2.8/10 motor, ~3.5/10 mood, ~245 ms IKD, ~34% speech pauses)
+ *   and steadily recovers back into personal equilibrium (~5.3–5.8/10 motor, ~7.4–8.1/10 mood, ~155 ms IKD, ~16% pauses).
  */
 function buildDemoEntries() {
   const rand = mulberry32(20261114);
@@ -59,15 +59,12 @@ function buildDemoEntries() {
   const out = [];
 
   for (let back = 38; back >= 1; back -= 1) {
-    // Realistic adherence (~95%): 2 missed evenings across the 5.5-week span
-    if (back === 28 || back === 11) continue;
-
     // Latent clinical state `health` in [0.28, 0.95]: ~0.74 = healthy personal remission baseline (with realistic sleepy/alert daily spread)
     let baseHealth;
-    if (back >= 23) {
+    if (back >= 24) {
       // Practice + 10-day Remission Baseline: healthy state with realistic within-person daily variance (SD ~0.14)
       baseHealth = 0.74 + Math.sin(back * 1.35) * 0.17;
-    } else if (back === 22) {
+    } else if (back >= 22) {
       baseHealth = 0.52;
     } else {
       // Last 21 days: positive recovery climb from moderate slowing (~ -2.2 SD) up into strong remission (~ +0.8 SD)
@@ -275,48 +272,71 @@ function analyzeForSpecialist(entries) {
     };
   });
 
-  // Personal Baseline: exclude first 5 practice sessions, calibrate on the next 10 sessions
+  // Personal Baseline: exclude first 5 practice sessions, calibrate on the next 10 sessions (k = 0 with SIGMA_MIN floors)
   const afterPractice = daily.slice(5);
   const baselineReady = afterPractice.length >= 10;
   const baselineWindow = afterPractice.slice(0, 10);
 
-  // All features sign-aligned so positive z = faster / smoother / lighter (green) and negative z = slower / heavier (red)
+  // `dir: -1` flips raw timing/error features so negative alignedZ = slower / more pauses / more erratic,
+  // 0 = personal equilibrium, and > +1.8 on pace features = accelerated / possible agitation.
   const featureDefs = [
-    { key: 'drawingSpeed', get: (d) => d.draw?.meanSpeed, dir: 1 },
-    { key: 'drawingPause', get: (d) => d.draw?.totalPauseTimeMs, dir: -1 },
-    { key: 'drawingJerk', get: (d) => d.draw?.normalizedJerk, dir: -1 },
-    { key: 'drawingCV', get: (d) => d.draw?.speedCV, dir: -1 },
-    { key: 'ikdMedian', get: (d) => d.typ?.medianIkdMs, dir: -1 },
-    { key: 'ikdMad', get: (d) => d.typ?.ikdMadMs, dir: -1 },
-    { key: 'backspaceRate', get: (d) => d.typ?.backspaceRate, dir: -1 },
-    { key: 'voicePause', get: (d) => (d.voi?.quality?.status !== 'rejected' ? d.voi?.pauseRatio : null), dir: -1 },
-    { key: 'voiceLongPause', get: (d) => (d.voi?.quality?.status !== 'rejected' ? d.voi?.longPausesPerMin : null), dir: -1 },
-    { key: 'dayScoreZ', get: (d) => d.subjectiveScore, dir: 1 },
+    { key: 'drawingSpeed', get: (d) => d.draw?.meanSpeed, dir: 1, sigmaMin: SIGMA_MIN.drawingSpeed, objective: true },
+    { key: 'drawingPause', get: (d) => d.draw?.totalPauseTimeMs, dir: -1, sigmaMin: SIGMA_MIN.drawingPauseTimeMs, objective: true },
+    { key: 'drawingJerk', get: (d) => d.draw?.normalizedJerk, dir: -1, sigmaMin: SIGMA_MIN.drawingJerk, objective: true },
+    { key: 'drawingCV', get: (d) => d.draw?.speedCV, dir: -1, sigmaMin: SIGMA_MIN.drawingCV, objective: true },
+    { key: 'ikdMedian', get: (d) => d.typ?.medianIkdMs, dir: -1, sigmaMin: SIGMA_MIN.ikdMedianMs, objective: true },
+    { key: 'ikdMad', get: (d) => d.typ?.ikdMadMs, dir: -1, sigmaMin: SIGMA_MIN.ikdMadMs, objective: true },
+    { key: 'backspaceRate', get: (d) => d.typ?.backspaceRate, dir: -1, sigmaMin: SIGMA_MIN.backspaceRate, objective: true },
+    {
+      key: 'voicePause',
+      get: (d) => (d.voi?.quality?.status !== 'rejected' ? d.voi?.pauseRatio : null),
+      dir: -1,
+      sigmaMin: SIGMA_MIN.voicePauseRatio,
+      objective: true,
+    },
+    {
+      key: 'voiceLongPause',
+      get: (d) => (d.voi?.quality?.status !== 'rejected' ? d.voi?.longPausesPerMin : null),
+      dir: -1,
+      sigmaMin: SIGMA_MIN.voiceLongPausesPerMin,
+      objective: true,
+    },
+    { key: 'dayScoreZ', get: (d) => d.subjectiveScore, dir: 1, sigmaMin: SIGMA_MIN.dayScore, objective: false },
   ];
 
   const baseStats = {};
+  let anyFloorUsed = false;
   if (baselineReady) {
     for (const f of featureDefs) {
       const vals = baselineWindow.map(f.get).filter((v) => typeof v === 'number' && Number.isFinite(v));
       if (vals.length < 3) continue;
       const med = median(vals);
       const devs = vals.map((v) => Math.abs(v - med));
-      const s = 1.4826 * (median(devs) || 0);
-      baseStats[f.key] = { med, s: s > 1e-9 ? s : null, n: vals.length };
+      const rawS = 1.4826 * (median(devs) || 0);
+      const floor = f.sigmaMin ?? 1e-6;
+      const s = Math.max(rawS, floor);
+      const usedFloor = rawS < floor;
+      if (usedFloor) anyFloorUsed = true;
+      baseStats[f.key] = { med, s, rawS, usedFloor, n: vals.length };
     }
   }
 
+  const objectiveKeys = featureDefs.filter((f) => f.objective).map((f) => f.key);
+
   const enriched = daily.map((d) => {
+    const rawZ = {};
     const alignedZ = {};
     if (baselineReady && !d.isPractice) {
       for (const f of featureDefs) {
         const v = f.get(d);
         const st = baseStats[f.key];
-        if (typeof v !== 'number' || !st || !st.s) {
+        if (typeof v !== 'number' || !Number.isFinite(v) || !st || !st.s) {
+          rawZ[f.key] = null;
           alignedZ[f.key] = null;
           continue;
         }
         const z = normalizeFeature(v, st, { signed: true });
+        rawZ[f.key] = z;
         alignedZ[f.key] = f.dir === -1 ? -z : z;
       }
     }
@@ -330,30 +350,55 @@ function analyzeForSpecialist(entries) {
     const regularityEffort = avgDomain(['drawingJerk', 'drawingCV', 'ikdMad', 'backspaceRate']);
     const rhythmPerceived = avgDomain(['dayScoreZ']);
 
-    const objDomains = [tempoFluency, regularityEffort].filter((v) => v !== null);
-    const zObj = objDomains.length ? mean(objDomains) : null;
-    const objectiveIndex = zObj !== null ? clip(5 + zObj, 0, 10) : null;
+    // Absolute-deviation score `mean(|z|)` across objective features (Papers #4 & #7)
+    const absObjVals = objectiveKeys
+      .map((k) => rawZ[k])
+      .filter((v) => typeof v === 'number' && Number.isFinite(v))
+      .map((v) => Math.abs(v));
+    const dysregulationZ = absObjVals.length ? mean(absObjVals) : null;
+
+    // Signed Motor Pace Index (5.0 = personal equilibrium; < 3.5 = slowing; > 6.8 = agitation watch).
+    // Kept separate from regularityEffort so fast frantic pace (+2 SD) + erratic typing (-2 SD) never cancel out to 5.0!
+    const objectiveIndex = tempoFluency !== null ? clip(5 + tempoFluency, 0, 10) : null;
+
+    const motorState =
+      baselineReady && !d.isPractice
+        ? classifyMotorState({
+            signedPaceZ: tempoFluency,
+            dysregulationZ,
+            ikdMadZ: rawZ.ikdMad,
+            backspaceZ: rawZ.backspaceRate,
+            nightShare: d.typ?.nightShare ?? 0,
+          })
+        : null;
 
     return {
       ...d,
+      rawZ,
       alignedZ,
-      domains: { tempoFluency, regularityEffort, rhythmPerceived },
+      domains: { tempoFluency, regularityEffort, dysregulationZ, rhythmPerceived },
+      dysregulationZ,
       objectiveIndex,
+      motorState,
     };
   });
 
-  return { weekly, baselineReady, days: enriched };
+  return { weekly, baselineReady, anyFloorUsed, days: enriched };
 }
 
-function computeTrendDelta(vals) {
-  if (vals.length < 2) return 0;
-  const half = Math.max(1, Math.floor(vals.length / 2));
-  const early = median(vals.slice(0, half));
-  const recent = median(vals.slice(-half));
-  return recent - early;
+function computeSustainedSlowStreak(postBaselineDays) {
+  let streak = 0;
+  for (let i = postBaselineDays.length - 1; i >= 0; i -= 1) {
+    const d = postBaselineDays[i];
+    const slow = typeof d.objectiveIndex === 'number' && d.objectiveIndex <= 3.8;
+    const heavy = typeof d.subjectiveScore === 'number' && d.subjectiveScore < 4.0;
+    if (slow || heavy) streak += 1;
+    else break;
+  }
+  return streak;
 }
 
-function updateStatusBanner({ baselineReady, totalDays, summaryLabel, objMed, subMed, objVals, subVals }) {
+function updateStatusBanner({ baselineReady, totalDays, summaryLabel, allDays, visibleDays, objMed, subMed, dysMed }) {
   const banner = document.getElementById('statusBanner');
   const headline = document.getElementById('statusHeadline');
   const detail = document.getElementById('statusDetail');
@@ -376,52 +421,101 @@ function updateStatusBanner({ baselineReady, totalDays, summaryLabel, objMed, su
     return;
   }
 
-  const gap = objMed !== null && subMed !== null ? subMed - objMed : 0;
-  const recentObj = objVals.length ? median(objVals.slice(-Math.min(4, objVals.length))) : objMed;
-  const recentSub = subVals.length ? median(subVals.slice(-Math.min(4, subVals.length))) : subMed;
-  const motorSlow = recentObj !== null && recentObj < 4.0;
-  const moodHeavy = recentSub !== null && recentSub < 4.0;
-  const largeGap = Math.abs(gap) >= 2.2;
-  const objTrend = computeTrendDelta(objVals);
-  const subTrend = computeTrendDelta(subVals);
-  const isImproving = objTrend >= 0.45 || (objMed !== null && objMed > 5.6);
+  const scoredVisible = visibleDays.filter((d) => !d.isPractice && typeof d.objectiveIndex === 'number');
+  const recentSlice = scoredVisible.slice(-Math.min(4, scoredVisible.length));
+  const recentObj = recentSlice.length ? median(recentSlice.map((d) => d.objectiveIndex)) : objMed;
+  const recentSubVals = visibleDays
+    .slice(-Math.min(4, visibleDays.length))
+    .map((d) => d.subjectiveScore)
+    .filter((v) => typeof v === 'number');
+  const recentSub = recentSubVals.length ? median(recentSubVals) : subMed;
 
-  if (motorSlow && moodHeavy) {
+  const recentPaceZ = recentObj !== null ? recentObj - 5 : null;
+  const recentDysVals = recentSlice.map((d) => d.dysregulationZ).filter((v) => typeof v === 'number');
+  const recentDys = recentDysVals.length ? median(recentDysVals) : dysMed;
+  const recentIkdMadVals = recentSlice.map((d) => d.rawZ?.ikdMad).filter((v) => typeof v === 'number');
+  const recentBsVals = recentSlice.map((d) => d.rawZ?.backspaceRate).filter((v) => typeof v === 'number');
+  const recentNightVals = recentSlice.map((d) => d.typ?.nightShare ?? 0);
+
+  const recentState = classifyMotorState({
+    signedPaceZ: recentPaceZ,
+    dysregulationZ: recentDys,
+    ikdMadZ: recentIkdMadVals.length ? median(recentIkdMadVals) : null,
+    backspaceZ: recentBsVals.length ? median(recentBsVals) : null,
+    nightShare: recentNightVals.length ? mean(recentNightVals) : 0,
+  });
+
+  const postBaseAll = allDays.filter((d) => !d.isPractice);
+  const slowStreak = computeSustainedSlowStreak(postBaseAll);
+
+  // Measure recovery as convergence TOWARD 5.0 personal equilibrium (not runaway high speed)
+  let recoveringToEquilibrium = false;
+  if (scoredVisible.length >= 4 && recentObj !== null && recentObj >= 4.0 && recentObj <= 6.5) {
+    const half = Math.max(1, Math.floor(scoredVisible.length / 2));
+    const earlyObj = median(scoredVisible.slice(0, half).map((d) => d.objectiveIndex));
+    const earlyDist = Math.abs(earlyObj - 5.0);
+    const recentDist = Math.abs(recentObj - 5.0);
+    recoveringToEquilibrium = earlyObj < 4.2 && earlyDist - recentDist >= 0.6;
+  }
+
+  const moodZVals = recentSlice.map((d) => d.alignedZ?.dayScoreZ).filter((v) => typeof v === 'number');
+  const recentMoodZ = moodZVals.length ? median(moodZVals) : null;
+  const zGap = recentMoodZ !== null && recentPaceZ !== null ? recentMoodZ - recentPaceZ : 0;
+  const largeZGap = Math.abs(zGap) >= 1.5;
+
+  const motorSlow = recentState.code === 'slowing' || (recentObj !== null && recentObj <= 3.5);
+  const moodHeavy = recentSub !== null && recentSub < 4.0;
+
+  if (recentState.code === 'agitation_watch' || recentState.code === 'dysregulated') {
+    banner.className = 'status-banner agitation';
+    headline.textContent =
+      recentState.code === 'agitation_watch'
+        ? `Agitation / dysregulation watch (${summaryLabel}) — Speed spike or erratic typing above personal equilibrium`
+        : `Motor dysregulation noted (${summaryLabel}) — Elevated variability (|z|) from personal baseline`;
+    detail.textContent = `Recent Motor Pace ${recentObj !== null ? `${recentObj.toFixed(1)}/10` : '—'} (equilibrium is 4.0–6.0) · Dysregulation |z| ${
+      recentDys !== null ? `${recentDys.toFixed(2)} SD` : '—'
+    }. Fast spikes (> 6.8) or high IKD MAD / backspaces / night typing warrant clinical check, not "extra health".`;
+  } else if (motorSlow && moodHeavy) {
     banner.className = 'status-banner warn';
-    headline.textContent = `Clinical attention (${summaryLabel}): Both motor behavior and perceived mood are below baseline`;
-    detail.textContent = `Recent Motor Behavior ${recentObj.toFixed(1)}/10 · Perceived Mood ${recentSub.toFixed(1)}/10 (personal baseline is 4.0–6.0).`;
+    const followUp =
+      slowStreak >= 14
+        ? `Sustained ${slowStreak} evenings below baseline (≥ 14d threshold) — specialist contact recommended.`
+        : `Monitor persistence (${slowStreak}d streak; contact specialist if slowing lasts ≥ 14 days).`;
+    headline.textContent = `Psychomotor slowing & heavy mood (${summaryLabel})`;
+    detail.textContent = `Recent Motor Pace ${recentObj.toFixed(1)}/10 · Perceived Mood ${recentSub.toFixed(1)}/10. ${followUp}`;
   } else if (motorSlow) {
     banner.className = 'status-banner warn';
-    headline.textContent = `Motor slowing detected (${summaryLabel})${largeGap ? ' — Perceived mood remains higher than motor speed' : ''}`;
-    detail.textContent = `Recent Motor Behavior is ${recentObj.toFixed(1)}/10 while Perceived Mood is ${
-      recentSub !== null ? `${recentSub.toFixed(1)}/10` : 'unscored'
-    }.`;
+    const followUp =
+      slowStreak >= 14
+        ? `Sustained ${slowStreak}d below equilibrium — clinical review advised.`
+        : `Contact clinician if downward motor trend persists ≥ 14 days.`;
+    headline.textContent = `Psychomotor slowing detected (${summaryLabel})${largeZGap ? ' — Perceived mood remains higher than motor pace' : ''}`;
+    detail.textContent = `Recent Motor Pace ${recentObj.toFixed(1)}/10 (< 3.5 slowing zone; 4.0–6.0 = personal equilibrium). ${followUp}`;
   } else if (moodHeavy) {
     banner.className = 'status-banner warn';
-    headline.textContent = `Low perceived mood (${summaryLabel})${largeGap ? ' — Objective motor speed remains steady' : ''}`;
-    detail.textContent = `Recent Perceived Mood is ${recentSub.toFixed(1)}/10 while Motor Behavior is ${
+    headline.textContent = `Low perceived mood (${summaryLabel})${largeZGap ? ' — Objective motor pace remains in equilibrium' : ''}`;
+    detail.textContent = `Recent Perceived Mood is ${recentSub.toFixed(1)}/10 while Motor Pace is ${
       recentObj !== null ? `${recentObj.toFixed(1)}/10` : 'pending'
-    }.`;
-  } else if (isImproving) {
+    }. Clinical review recommended if persistent ≥ 14 days.`;
+  } else if (recoveringToEquilibrium) {
     banner.className = 'status-banner';
-    const trendNote = objTrend >= 0.45 ? ` (+${objTrend.toFixed(1)} motor pts across window)` : '';
-    headline.textContent = `Positive recovery trend (${summaryLabel}) — Motor fluency & daily mood back in healthy range${trendNote}`;
-    detail.textContent = `Recent Motor Behavior ${recentObj !== null ? `${recentObj.toFixed(1)}/10` : '—'} (5.0 = personal remission baseline) · Perceived Mood ${
-      recentSub !== null ? `${recentSub.toFixed(1)}/10` : '—'
-    }.`;
-  } else if (largeGap) {
+    headline.textContent = `Positive recovery toward equilibrium (${summaryLabel}) — Motor pace & fluency returned to personal norm`;
+    detail.textContent = `Recent Motor Pace ${recentObj.toFixed(1)}/10 (inside 4.0–6.0 equilibrium) · Dysregulation |z| ${
+      recentDys !== null ? `${recentDys.toFixed(2)} SD` : '—'
+    } · Perceived Mood ${recentSub !== null ? `${recentSub.toFixed(1)}/10` : '—'}.`;
+  } else if (largeZGap) {
     banner.className = 'status-banner amber';
-    headline.textContent = `Mood–Motor divergence noted (${summaryLabel})`;
+    headline.textContent = `Mood–Motor divergence vs. baseline (${summaryLabel})`;
     detail.textContent =
-      gap > 0
-        ? `Perceived Mood (${subMed.toFixed(1)}/10) is ${gap.toFixed(1)} pts higher than Motor Behavior (${objMed.toFixed(1)}/10).`
-        : `Perceived Mood (${subMed.toFixed(1)}/10) is ${Math.abs(gap).toFixed(1)} pts lower than Motor Behavior (${objMed.toFixed(1)}/10).`;
+      zGap > 0
+        ? `Perceived Mood (+${recentMoodZ.toFixed(1)} SD) is notably brighter than Motor Pace (${recentPaceZ >= 0 ? '+' : ''}${recentPaceZ.toFixed(1)} SD).`
+        : `Perceived Mood (${recentMoodZ.toFixed(1)} SD) is heavier than Motor Pace (${recentPaceZ >= 0 ? '+' : ''}${recentPaceZ.toFixed(1)} SD).`;
   } else {
     banner.className = 'status-banner';
-    headline.textContent = `Steady in remission (${summaryLabel}) — Motor behavior and perceived mood match personal baseline`;
-    detail.textContent = `Motor Behavior ${objMed !== null ? `${objMed.toFixed(1)}/10` : '—'} · Perceived Mood ${
-      subMed !== null ? `${subMed.toFixed(1)}/10` : '—'
-    } · Within healthy personal range.`;
+    headline.textContent = `Steady in personal equilibrium (${summaryLabel}) — Regulated pace, rhythm & daily mood`;
+    detail.textContent = `Motor Pace ${objMed !== null ? `${objMed.toFixed(1)}/10` : '—'} (4.0–6.0 equilibrium) · Dysregulation |z| ${
+      dysMed !== null ? `${dysMed.toFixed(2)} SD` : '—'
+    } · Perceived Mood ${subMed !== null ? `${subMed.toFixed(1)}/10` : '—'}.`;
   }
 }
 
@@ -441,7 +535,7 @@ function sliceByCalendarDays(days, windowDays) {
 }
 
 function renderDashboard() {
-  const { weekly, baselineReady, days } = analyzeForSpecialist(rawEntries);
+  const { weekly, baselineReady, anyFloorUsed, days } = analyzeForSpecialist(rawEntries);
 
   // Populate calendar-week selector alongside the 3d / 7d / 14d / 21d buttons
   const weekSel = document.getElementById('weekSelect');
@@ -500,17 +594,28 @@ function renderDashboard() {
   // Baseline badge
   const baseBadge = document.getElementById('baselineBadge');
   baseBadge.textContent = baselineReady
-    ? `Baseline active · Viewing ${summaryLabel}`
+    ? `Baseline active${anyFloorUsed ? ' (σ_min floor)' : ''} · Viewing ${summaryLabel}`
     : `Baseline calibrating (${Math.max(0, days.length - 5)}/10 post-practice days)`;
   baseBadge.className = `pill ${baselineReady ? 'pill-ok' : 'pill-info'}`;
 
   // Top KPIs (computed over the active timeframe)
   const objVals = summaryDays.map((d) => d.objectiveIndex).filter((v) => typeof v === 'number');
   const subVals = summaryDays.map((d) => d.subjectiveScore).filter((v) => typeof v === 'number');
+  const dysVals = summaryDays.map((d) => d.dysregulationZ).filter((v) => typeof v === 'number');
   const objMed = objVals.length ? median(objVals) : null;
   const subMed = subVals.length ? median(subVals) : null;
+  const dysMed = dysVals.length ? median(dysVals) : null;
 
-  updateStatusBanner({ baselineReady, totalDays: days.length, summaryLabel, objMed, subMed, objVals, subVals });
+  updateStatusBanner({
+    baselineReady,
+    totalDays: days.length,
+    summaryLabel,
+    allDays: days,
+    visibleDays,
+    objMed,
+    subMed,
+    dysMed,
+  });
 
   const setGauge = (dotId, pct, color) => {
     const dot = document.getElementById(dotId);
@@ -524,6 +629,7 @@ function renderDashboard() {
     dot.style.background = color;
   };
 
+  // KPI 1: Motor Pace (Signed) — separates Slowing (< 3.5), Equilibrium (4.0–6.0), and Agitation Watch (> 6.8)
   const objEl = document.getElementById('kpiObjective');
   const objPill = document.getElementById('kpiObjPill');
   objEl.textContent = objMed !== null ? objMed.toFixed(1) : '—';
@@ -532,23 +638,63 @@ function renderDashboard() {
     objPill.textContent = 'Pre-baseline';
     objPill.className = 'pill';
     setGauge('kpiObjDot', null);
-  } else if (objMed < 4) {
+  } else if (objMed <= 3.5) {
     objEl.style.color = 'var(--pink)';
     objPill.textContent = 'Slowed';
     objPill.className = 'pill pill-warn';
     setGauge('kpiObjDot', objMed * 10, 'var(--pink)');
-  } else if (objMed > 6) {
-    objEl.style.color = 'var(--blue)';
-    objPill.textContent = 'Improving / Fast';
-    objPill.className = 'pill pill-ok';
-    setGauge('kpiObjDot', objMed * 10, 'var(--blue)');
-  } else {
+  } else if (objMed < 4.0) {
+    objEl.style.color = 'var(--pink)';
+    objPill.textContent = 'Mildly slow';
+    objPill.className = 'pill pill-warn';
+    setGauge('kpiObjDot', objMed * 10, 'var(--pink)');
+  } else if (objMed >= 6.8) {
+    objEl.style.color = 'var(--peach)';
+    objPill.textContent = 'Agitation watch';
+    objPill.className = 'pill pill-amber';
+    setGauge('kpiObjDot', objMed * 10, 'var(--peach)');
+  } else if (objMed > 6.0) {
     objEl.style.color = 'var(--lilac-pale)';
-    objPill.textContent = 'Normal';
+    objPill.textContent = 'Brisk (monitor)';
     objPill.className = 'pill pill-info';
     setGauge('kpiObjDot', objMed * 10, 'var(--lilac)');
+  } else {
+    objEl.style.color = 'var(--blue)';
+    objPill.textContent = 'Equilibrium';
+    objPill.className = 'pill pill-ok';
+    setGauge('kpiObjDot', objMed * 10, 'var(--blue)');
   }
 
+  // KPI 2: Dysregulation (mean |z|) — absolute deviation alongside signed pace (Papers #4 & #7)
+  const divEl = document.getElementById('kpiDivergence');
+  const divPill = document.getElementById('kpiDivPill');
+  if (dysMed !== null) {
+    divEl.textContent = dysMed.toFixed(2);
+    if (dysMed >= 1.6) {
+      divEl.style.color = 'var(--peach)';
+      divPill.textContent = 'Dysregulated';
+      divPill.className = 'pill pill-amber';
+      setGauge('kpiDivDot', (clip(dysMed, 0, 3) / 3) * 100, 'var(--peach)');
+    } else if (dysMed >= 1.2) {
+      divEl.style.color = 'var(--lilac-pale)';
+      divPill.textContent = 'Mild spread';
+      divPill.className = 'pill pill-info';
+      setGauge('kpiDivDot', (clip(dysMed, 0, 3) / 3) * 100, 'var(--lilac)');
+    } else {
+      divEl.style.color = 'var(--blue)';
+      divPill.textContent = 'Regulated';
+      divPill.className = 'pill pill-ok';
+      setGauge('kpiDivDot', (clip(dysMed, 0, 3) / 3) * 100, 'var(--blue)');
+    }
+  } else {
+    divEl.textContent = '—';
+    divEl.style.color = 'var(--text)';
+    divPill.textContent = 'Pre-baseline';
+    divPill.className = 'pill';
+    setGauge('kpiDivDot', null);
+  }
+
+  // KPI 3: Perceived Mood (Day Line)
   const subEl = document.getElementById('kpiSubjective');
   const subPill = document.getElementById('kpiSubPill');
   subEl.textContent = subMed !== null ? subMed.toFixed(1) : '—';
@@ -572,24 +718,6 @@ function renderDashboard() {
     subPill.textContent = 'Moderate';
     subPill.className = 'pill pill-info';
     setGauge('kpiSubDot', subMed * 10, 'var(--lilac)');
-  }
-
-  const divEl = document.getElementById('kpiDivergence');
-  const divPill = document.getElementById('kpiDivPill');
-  if (objMed !== null && subMed !== null) {
-    const diff = subMed - objMed;
-    divEl.textContent = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}`;
-    const divergent = Math.abs(diff) >= 1.5;
-    divEl.style.color = divergent ? 'var(--pink)' : 'var(--blue)';
-    divPill.textContent = divergent ? (diff > 0 ? 'Motor slower' : 'Mood heavier') : 'Aligned';
-    divPill.className = `pill ${divergent ? 'pill-warn' : 'pill-ok'}`;
-    setGauge('kpiDivDot', ((clip(diff, -5, 5) + 5) / 10) * 100, divergent ? 'var(--pink)' : 'var(--blue)');
-  } else {
-    divEl.textContent = '—';
-    divEl.style.color = 'var(--text)';
-    divPill.textContent = 'Pending';
-    divPill.className = 'pill';
-    setGauge('kpiDivDot', null);
   }
 
   const validDraw = visibleDays.filter((d) => d.draw?.quality?.valid).length;
@@ -634,15 +762,20 @@ function renderDashboard() {
 
     const pct = ((last - ref) / ref) * 100;
     const absPct = Math.round(Math.abs(pct));
-    if (absPct < 8) {
-      pillEl.textContent = `Steady (ref ${ref.toFixed(0)} ${unitShort})`;
-      pillEl.className = 'pill pill-info';
+    if (absPct < 10) {
+      pillEl.textContent = `Equilibrium (ref ${ref.toFixed(0)} ${unitShort})`;
+      pillEl.className = 'pill pill-ok';
     } else {
-      const isBetter = higherIsBetter ? pct > 0 : pct < 0;
+      const fasterThanRef = higherIsBetter ? pct > 0 : pct < 0;
       const arrow = pct > 0 ? '↑' : '↓';
       const word = higherIsBetter ? (pct > 0 ? 'faster' : 'slower') : pct > 0 ? 'slower' : 'faster';
-      pillEl.textContent = `${arrow} ${absPct}% ${word} vs base`;
-      pillEl.className = `pill ${isBetter ? 'pill-ok' : 'pill-warn'}`;
+      if (fasterThanRef && absPct >= 30) {
+        pillEl.textContent = `${arrow} ${absPct}% ${word} · Watch`;
+        pillEl.className = 'pill pill-amber';
+      } else {
+        pillEl.textContent = `${arrow} ${absPct}% ${word} vs base`;
+        pillEl.className = `pill ${fasterThanRef ? 'pill-info' : 'pill-warn'}`;
+      }
     }
   };
 
@@ -657,7 +790,7 @@ function renderDashboard() {
     'drawDelta',
     visibleDays.map((d) => d.draw?.meanSpeed).filter((v) => typeof v === 'number'),
     baseMedFor((d) => d.draw?.meanSpeed),
-    'mm/s latest · higher = faster',
+    'mm/s latest · ref = equilibrium',
     'mm/s',
     true
   );
@@ -666,7 +799,7 @@ function renderDashboard() {
     'typingDelta',
     visibleDays.map((d) => d.typ?.medianIkdMs).filter((v) => typeof v === 'number'),
     baseMedFor((d) => d.typ?.medianIkdMs),
-    'ms delay · lower = faster',
+    'ms delay · ref = equilibrium',
     'ms',
     false
   );
@@ -687,22 +820,31 @@ function renderDashboard() {
   };
   renderDomainBars(document.getElementById('domainBars'), [
     {
-      label: 'Motor & Speech Speed',
+      label: 'Motor & Speech Pace (Signed)',
       z: avgDom('tempoFluency'),
-      lowLabel: 'Slower / More pauses',
-      highLabel: 'Faster / More fluent',
+      mode: 'two_tailed',
+      lowLabel: 'Psychomotor slowing',
+      agitationLabel: 'Agitation watch',
     },
     {
-      label: 'Movement & Typing Smoothness',
+      label: 'Rhythm & Error Control',
       z: avgDom('regularityEffort'),
-      lowLabel: 'Hesitant / Irregular',
-      highLabel: 'Smooth / Steady',
+      mode: 'directional',
+      lowLabel: 'Erratic IKD / High backspaces',
+      highLabel: 'Steady & controlled',
+    },
+    {
+      label: 'Overall Dysregulation (mean |z|)',
+      z: avgDom('dysregulationZ'),
+      mode: 'magnitude',
+      highLabel: 'Dysregulated / Agitated',
     },
     {
       label: 'Perceived Daily Mood',
       z: avgDom('rhythmPerceived'),
-      lowLabel: 'Heavier than usual',
-      highLabel: 'Lighter than usual',
+      mode: 'directional',
+      lowLabel: 'Heavier than baseline',
+      highLabel: 'Lighter than baseline',
     },
   ]);
 
@@ -749,13 +891,16 @@ function renderInspector(visibleDays, onSelect) {
   visibleDays.forEach((d) => {
     const btn = document.createElement('button');
     btn.className = `day-chip ${d.date === selectedDate ? 'active' : ''}`;
-    const slowFlag = d.objectiveIndex !== null && d.objectiveIndex < 4;
-    const fastFlag = d.objectiveIndex !== null && d.objectiveIndex > 6;
-    const dot = slowFlag || fastFlag ? ' ●' : '';
+    const slowFlag = d.objectiveIndex !== null && d.objectiveIndex <= 3.5;
+    const agiFlag =
+      (d.objectiveIndex !== null && d.objectiveIndex >= 6.8) ||
+      d.motorState?.code === 'agitation_watch' ||
+      d.motorState?.code === 'dysregulated';
+    const dot = slowFlag || agiFlag ? ' ●' : '';
     btn.textContent = `${d.date.slice(5)}${dot}`;
     if (d.date !== selectedDate) {
       if (slowFlag) btn.style.color = 'var(--pink)';
-      else if (fastFlag) btn.style.color = 'var(--blue)';
+      else if (agiFlag) btn.style.color = 'var(--peach)';
     }
     btn.addEventListener('click', () => onSelect(d.date));
     listEl.appendChild(btn);
@@ -774,23 +919,40 @@ function renderInspector(visibleDays, onSelect) {
   }
 
   if (badgeEl) {
-    badgeEl.textContent = `${day.date}${day.isPractice ? ' · Practice evening' : ''}`;
+    const stateSuffix = day.isPractice
+      ? ' · Practice evening'
+      : day.motorState
+      ? ` · ${day.motorState.shortLabel}`
+      : '';
+    badgeEl.textContent = `${day.date}${stateSuffix}`;
   }
   renderDayLineSvg(document.getElementById('dayLineSvg'), day.entry.line, visibleDays, selectedDate);
   ratEl.textContent = day.rationale || 'No Gemini rationale recorded for this evening.';
 
   const rows = [
     ['Recorded Date', `${day.date}${day.isPractice ? ' (Practice 1–5)' : ''}`],
-    ['Motor Behavior (Objective)', day.objectiveIndex !== null ? `${day.objectiveIndex.toFixed(1)} / 10` : 'Pre-baseline'],
+    [
+      'Motor Pace & State',
+      day.objectiveIndex !== null
+        ? `${day.objectiveIndex.toFixed(1)} / 10 (${day.motorState?.label || 'Equilibrium'})`
+        : 'Pre-baseline',
+    ],
+    [
+      'Dysregulation (mean |z|)',
+      typeof day.dysregulationZ === 'number' ? `${day.dysregulationZ.toFixed(2)} SD` : 'Pre-baseline',
+    ],
     ['Perceived Mood (Gemini)', day.subjectiveScore !== null ? `${day.subjectiveScore.toFixed(1)} / 10` : '—'],
     [
-      'Drawing Speed & Pauses',
-      day.draw ? `${day.draw.meanSpeed.toFixed(1)} mm/s · ${Math.round(day.draw.totalPauseTimeMs)} ms paused` : '—',
+      'Day Line Kinematics (Exploratory)',
+      day.draw
+        ? `${day.draw.meanSpeed.toFixed(1)} mm/s · ${Math.round(day.draw.totalPauseTimeMs)} ms paused · ${day.draw.fingerLifts} lift`
+        : '—',
     ],
-    ['Drawing Finger Lifts', day.draw ? `${day.draw.fingerLifts}` : '—'],
     [
-      'Typing Delay & Rhythm',
-      day.typ ? `${Math.round(day.typ.medianIkdMs)} ms median · ±${Math.round(day.typ.ikdMadMs)} ms spread` : 'Not recorded',
+      'Typing Pace, Spread & Backspaces',
+      day.typ
+        ? `${Math.round(day.typ.medianIkdMs)} ms · ±${Math.round(day.typ.ikdMadMs)} ms MAD · ${(day.typ.backspaceRate * 100).toFixed(1)}% BS`
+        : 'Not recorded',
     ],
     [
       'Voice Pauses & Audio SNR',
@@ -876,7 +1038,8 @@ window.addEventListener('drop', async (e) => {
 // Auto-load from localStorage if opened on the same web origin; otherwise start with recovery demo data.
 try {
   const stored = localStorage.getItem('sweetdreams.entries.v1');
-  rawEntries = stored ? JSON.parse(stored) : buildDemoEntries();
+  const parsed = stored ? JSON.parse(stored) : null;
+  rawEntries = Array.isArray(parsed) && parsed.length > 0 ? parsed : buildDemoEntries();
 } catch {
   rawEntries = buildDemoEntries();
 }

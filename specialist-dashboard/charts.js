@@ -91,18 +91,29 @@ export function renderDualLineChart(container, days, onSelectDay, selectedDate =
   const yFor = (val) => padT + ((10 - val) / 10) * plotH;
   const xFor = (i) => (days.length === 1 ? padL + plotW / 2 : padL + (i / (days.length - 1)) * plotW);
 
-  // Soft pastel rose slowing zone (< 4.0)
+  // Soft pastel peach agitation / accelerated watch zone (> 6.8, i.e., > +1.8 SD)
   svg.appendChild(
     el('rect', {
       x: padL,
-      y: yFor(4),
+      y: yFor(10),
       width: plotW,
-      height: yFor(0) - yFor(4),
-      fill: 'rgba(241, 181, 215, 0.05)',
+      height: yFor(6.8) - yFor(10),
+      fill: 'rgba(255, 216, 190, 0.055)',
     })
   );
 
-  // Soft lilac +-1 SD personal baseline band (4.0 .. 6.0)
+  // Soft pastel rose slowing zone (< 3.5, i.e., < -1.5 SD)
+  svg.appendChild(
+    el('rect', {
+      x: padL,
+      y: yFor(3.5),
+      width: plotW,
+      height: yFor(0) - yFor(3.5),
+      fill: 'rgba(241, 181, 215, 0.055)',
+    })
+  );
+
+  // Soft lilac +-1 SD personal equilibrium band (4.0 .. 6.0)
   svg.appendChild(
     el('rect', {
       x: padL,
@@ -116,15 +127,22 @@ export function renderDualLineChart(container, days, onSelectDay, selectedDate =
   svg.appendChild(
     el(
       'text',
-      { x: w - padR - 6, y: yFor(5) - 6, 'text-anchor': 'end', fill: 'rgba(235,220,255,0.48)', 'font-size': 9.5, 'font-weight': 500 },
-      'Normal range (4–6)'
+      { x: w - padR - 6, y: padT + 11, 'text-anchor': 'end', fill: 'rgba(255,216,190,0.62)', 'font-size': 9.5, 'font-weight': 500 },
+      'Agitation watch (> 6.8)'
     )
   );
   svg.appendChild(
     el(
       'text',
-      { x: w - padR - 6, y: yFor(0) - 6, 'text-anchor': 'end', fill: 'rgba(241,181,215,0.55)', 'font-size': 9.5, 'font-weight': 500 },
-      'Slowing / Heavy (< 4)'
+      { x: w - padR - 6, y: yFor(5) - 6, 'text-anchor': 'end', fill: 'rgba(235,220,255,0.48)', 'font-size': 9.5, 'font-weight': 500 },
+      'Equilibrium (4–6)'
+    )
+  );
+  svg.appendChild(
+    el(
+      'text',
+      { x: w - padR - 6, y: yFor(0) - 6, 'text-anchor': 'end', fill: 'rgba(241,181,215,0.58)', 'font-size': 9.5, 'font-weight': 500 },
+      'Slowing (< 3.5)'
     )
   );
 
@@ -200,8 +218,14 @@ export function renderDualLineChart(container, days, onSelectDay, selectedDate =
     if (hasObj) objPts.push({ x, y: yFor(d.objectiveIndex), d });
     if (hasSub) subPts.push({ x, y: yFor(d.subjectiveScore), d });
 
-    // Subtle pastel rose gap connector when Mood and Motor diverge by >= 1.5 pts
-    if (hasObj && hasSub && Math.abs(d.subjectiveScore - d.objectiveIndex) >= 1.5) {
+    // Connector only when baseline-normalized mood and signed motor pace diverge by >= 1.5 SD
+    const moodZ = d.alignedZ?.dayScoreZ;
+    const paceZ = d.domains?.tempoFluency;
+    const zDivergent =
+      typeof moodZ === 'number' && typeof paceZ === 'number'
+        ? Math.abs(moodZ - paceZ) >= 1.5
+        : false;
+    if (hasObj && hasSub && zDivergent) {
       svg.appendChild(
         el('line', {
           x1: x,
@@ -242,23 +266,31 @@ export function renderDualLineChart(container, days, onSelectDay, selectedDate =
 
   for (const p of objPts) {
     const isSel = p.d.date === selectedDate;
+    const isSlow = p.d.objectiveIndex <= 3.5;
+    const isAgitated = p.d.objectiveIndex >= 6.8 || p.d.motorState?.code === 'agitation_watch';
+    const ptStroke = isSlow ? '#f497c0' : isAgitated ? '#ffd8be' : '#cde5ff';
     if (isSel) {
-      svg.appendChild(el('circle', { cx: p.x, cy: p.y, r: 10, fill: '#cde5ff', 'fill-opacity': 0.22, 'pointer-events': 'none' }));
+      svg.appendChild(el('circle', { cx: p.x, cy: p.y, r: 10, fill: ptStroke, 'fill-opacity': 0.22, 'pointer-events': 'none' }));
     }
     const c = el('circle', {
       cx: p.x,
       cy: p.y,
       r: isSel ? 5 : 3.8,
       fill: isSel ? '#ffffff' : '#1b1a27',
-      stroke: p.d.objectiveIndex < 4 ? '#f497c0' : '#cde5ff',
+      stroke: ptStroke,
       'stroke-width': 2,
     });
     attachTip(
       c,
       () =>
-        `<strong>${p.d.date}</strong><br/>Motor Behavior: <b>${p.d.objectiveIndex.toFixed(1)} / 10</b> (${
-          p.d.objectiveIndex < 4 ? 'Slowed' : p.d.objectiveIndex > 6 ? 'Faster than baseline' : 'Within normal 4–6'
-        })`
+        `<strong>${p.d.date}</strong><br/>Motor Pace: <b>${p.d.objectiveIndex.toFixed(1)} / 10</b> (${
+          p.d.motorState?.label ||
+          (isSlow ? 'Psychomotor slowing' : isAgitated ? 'Possible agitation / dysregulation' : 'In personal equilibrium')
+        })${
+          typeof p.d.dysregulationZ === 'number'
+            ? `<br/>Dysregulation |z|: <b>${p.d.dysregulationZ.toFixed(2)} SD</b>`
+            : ''
+        }`
     );
     c.addEventListener('click', () => onSelectDay?.(p.d.date));
     svg.appendChild(c);
@@ -292,31 +324,74 @@ export function renderDualLineChart(container, days, onSelectDay, selectedDate =
 }
 
 /**
- * 2. Diverging Horizontal Domain Bars (Pastel Rose <- 0 Lilac Baseline -> Pastel Sky).
+ * 2. Diverging Horizontal Domain Bars:
+ * Supports `two_tailed` (Slowing <- Equilibrium -> Agitation Watch),
+ * `magnitude` (0 Regulated -> +3 SD Dysregulated), and `directional`.
  */
 export function renderDomainBars(container, domains) {
   container.innerHTML = '';
   for (const dom of domains) {
     const z = typeof dom.z === 'number' && Number.isFinite(dom.z) ? dom.z : null;
+    const mode = dom.mode || 'directional';
     const clamped = z === null ? 0 : Math.max(-3, Math.min(3, z));
 
     let statusText = 'Pre-baseline';
     let valColor = 'var(--faint)';
     let fillBg = 'transparent';
     if (z !== null) {
-      const signStr = `${z >= 0 ? '+' : ''}${z.toFixed(2)} SD`;
-      if (z <= -1) {
-        statusText = `${signStr} · ${dom.lowLabel || 'Below baseline'}`;
-        valColor = 'var(--pink)';
-        fillBg = 'linear-gradient(90deg, #f497c0, #f1b5d7)';
-      } else if (z >= 1) {
-        statusText = `${signStr} · ${dom.highLabel || 'Above baseline'}`;
-        valColor = 'var(--blue)';
-        fillBg = 'linear-gradient(90deg, #d4bbff, #cde5ff)';
+      if (mode === 'magnitude') {
+        const magStr = `${z.toFixed(2)} SD`;
+        if (z >= 1.6) {
+          statusText = `${magStr} · ${dom.highLabel || 'Dysregulated'}`;
+          valColor = 'var(--peach)';
+          fillBg = 'linear-gradient(90deg, #d4bbff, #ffd8be)';
+        } else if (z >= 1.2) {
+          statusText = `${magStr} · Mild spread`;
+          valColor = 'var(--lilac-pale)';
+          fillBg = 'rgba(212, 187, 255, 0.8)';
+        } else {
+          statusText = `${magStr} · Regulated`;
+          valColor = 'var(--blue)';
+          fillBg = 'linear-gradient(90deg, #d4bbff, #cde5ff)';
+        }
+      } else if (mode === 'two_tailed') {
+        const signStr = `${z >= 0 ? '+' : ''}${z.toFixed(2)} SD`;
+        if (z <= -1.5) {
+          statusText = `${signStr} · ${dom.lowLabel || 'Slowing'}`;
+          valColor = 'var(--pink)';
+          fillBg = 'linear-gradient(90deg, #f497c0, #f1b5d7)';
+        } else if (z < -1.0) {
+          statusText = `${signStr} · Mildly slower`;
+          valColor = 'var(--pink)';
+          fillBg = 'rgba(241, 181, 215, 0.78)';
+        } else if (z >= 1.8) {
+          statusText = `${signStr} · ${dom.agitationLabel || 'Agitation watch'}`;
+          valColor = 'var(--peach)';
+          fillBg = 'linear-gradient(90deg, #d4bbff, #ffd8be)';
+        } else if (z > 1.0) {
+          statusText = `${signStr} · Brisk (monitor)`;
+          valColor = 'var(--lilac-pale)';
+          fillBg = 'rgba(212, 187, 255, 0.8)';
+        } else {
+          statusText = `${signStr} · In equilibrium`;
+          valColor = 'var(--blue)';
+          fillBg = z < 0 ? 'rgba(212, 187, 255, 0.7)' : 'rgba(205, 229, 255, 0.78)';
+        }
       } else {
-        statusText = `${signStr} · Normal`;
-        valColor = 'var(--lilac-pale)';
-        fillBg = z < 0 ? 'rgba(241, 181, 215, 0.65)' : 'rgba(212, 187, 255, 0.72)';
+        const signStr = `${z >= 0 ? '+' : ''}${z.toFixed(2)} SD`;
+        if (z <= -1) {
+          statusText = `${signStr} · ${dom.lowLabel || 'Below baseline'}`;
+          valColor = 'var(--pink)';
+          fillBg = 'linear-gradient(90deg, #f497c0, #f1b5d7)';
+        } else if (z >= 1) {
+          statusText = `${signStr} · ${dom.highLabel || 'Above baseline'}`;
+          valColor = 'var(--blue)';
+          fillBg = 'linear-gradient(90deg, #d4bbff, #cde5ff)';
+        } else {
+          statusText = `${signStr} · Equilibrium`;
+          valColor = 'var(--lilac-pale)';
+          fillBg = z < 0 ? 'rgba(241, 181, 215, 0.65)' : 'rgba(212, 187, 255, 0.72)';
+        }
       }
     }
 
@@ -338,7 +413,7 @@ export function renderDomainBars(container, domains) {
     track.className = 'dom-track';
     const normalBand = document.createElement('div');
     normalBand.className = 'dom-normal';
-    normalBand.title = 'Normal range: −1.0 to +1.0 SD';
+    normalBand.title = 'Equilibrium range: −1.0 to +1.0 SD';
     const zeroTick = document.createElement('div');
     zeroTick.className = 'dom-zero';
     track.append(normalBand, zeroTick);
@@ -369,7 +444,7 @@ export function renderZHeatmap(container, days, features, onSelectDay, selectedD
     return;
   }
 
-  const labelW = 180;
+  const labelW = 204;
   const cellW = Math.max(28, Math.min(44, Math.floor(820 / days.length)));
   const cellH = 26;
   const padT = 30;
@@ -378,15 +453,19 @@ export function renderZHeatmap(container, days, features, onSelectDay, selectedD
 
   const svg = el('svg', { viewBox: `0 0 ${w} ${h}`, width: '100%', height: h });
 
-  const colorForZ = (z) => {
+  const colorForZ = (z, twoTailed = false) => {
     if (z === null || z === undefined) return 'rgba(255,255,255,0.03)';
     const c = Math.max(-3, Math.min(3, z));
-    if (Math.abs(c) < 0.25) return 'rgba(212, 187, 255, 0.09)';
+    if (Math.abs(c) < 0.28) return 'rgba(212, 187, 255, 0.09)';
     if (c < 0) {
       const a = Math.min(0.76, 0.14 + (Math.abs(c) / 3) * 0.62);
       return `rgba(244, 151, 192, ${a.toFixed(2)})`;
     }
-    const a = Math.min(0.76, 0.14 + (c / 3) * 0.62);
+    if (twoTailed && c >= 1.8) {
+      const a = Math.min(0.78, 0.34 + ((c - 1.8) / 1.2) * 0.44);
+      return `rgba(255, 216, 190, ${a.toFixed(2)})`;
+    }
+    const a = Math.min(0.72, 0.14 + (c / 3) * 0.56);
     return `rgba(205, 229, 255, ${a.toFixed(2)})`;
   };
 
@@ -440,7 +519,7 @@ export function renderZHeatmap(container, days, features, onSelectDay, selectedD
         width: cellW - 3,
         height: cellH - 3,
         rx: 6,
-        fill: d.isPractice ? 'rgba(255,255,255,0.02)' : colorForZ(val),
+        fill: d.isPractice ? 'rgba(255,255,255,0.02)' : colorForZ(val, feat.twoTailed),
         stroke: d.isPractice ? 'rgba(255,255,255,0.05)' : val !== null && Math.abs(val) >= 1.5 ? 'rgba(255,255,255,0.26)' : null,
         'stroke-dasharray': d.isPractice ? '2 3' : null,
       });
@@ -483,8 +562,22 @@ export function renderZHeatmap(container, days, features, onSelectDay, selectedD
           return `<strong>${d.date}</strong><br/>${feat.label}: <b>Not recorded</b>`;
         }
         const zStr = `${val >= 0 ? '+' : ''}${val.toFixed(2)} SD`;
-        const verdict = val <= -1.5 ? 'Notably below baseline' : val <= -1 ? 'Mildly below baseline' : val >= 1 ? 'Faster / lighter than baseline' : 'Within normal baseline';
-        return `<strong>${d.date}</strong><br/>${feat.label}: <b>${zStr}</b><br/><span style="opacity:0.8">${verdict}</span>`;
+        const verdict =
+          feat.twoTailed && val >= 1.8
+            ? 'Abnormally fast (> +1.8 SD · Possible agitation / dysregulation)'
+            : val <= -1.5
+            ? 'Notably below equilibrium (Slowing / Dysregulated)'
+            : val < -1.0
+            ? 'Mildly below equilibrium'
+            : val > 1.0
+            ? feat.twoTailed
+              ? 'Brisk pace (monitor equilibrium)'
+              : 'Steady / lighter than baseline'
+            : 'Within personal equilibrium (±1 SD)';
+        const expNote = feat.exploratory
+          ? '<br/><span style="opacity:0.68">Exploratory: curve shape &amp; recall pauses affect Day Line speed.</span>'
+          : '';
+        return `<strong>${d.date}</strong><br/>${feat.label}: <b>${zStr}</b><br/><span style="opacity:0.85">${verdict}</span>${expNote}`;
       });
       g.addEventListener('click', () => onSelectDay?.(d.date));
       svg.appendChild(g);
@@ -614,15 +707,15 @@ export function renderDayLineSvg(container, line, allDays = [], selectedDate = n
     container.textContent = 'No Day Line recorded.';
     return;
   }
-  const w = 440;
+  const w = Math.max(360, Math.round(container.clientWidth || 560));
   const h = 176;
-  const pad = 16;
+  const pad = 14;
   const plotBottom = h - 26;
   const svg = el('svg', { viewBox: `0 0 ${w} ${h}`, width: '100%', height: h });
 
   // 4-stop Pastel Galaxy LineGradient (matches src/theme.js lineStops)
   const defs = el('defs');
-  const grad = el('linearGradient', { id: 'dayLineGrad', gradientUnits: 'userSpaceOnUse', x1: 0, y1: 0, x2: w, y2: 0 });
+  const grad = el('linearGradient', { id: 'dayLineGrad', gradientUnits: 'userSpaceOnUse', x1: pad, y1: 0, x2: w - pad, y2: 0 });
   for (const [offset, stopColor] of [
     ['0%', '#f1b5d7'],
     ['48%', '#d4bbff'],
@@ -635,11 +728,19 @@ export function renderDayLineSvg(container, line, allDays = [], selectedDate = n
   svg.appendChild(defs);
 
   const midY = (pad + plotBottom) / 2;
-  svg.appendChild(el('line', { x1: 0, x2: w, y1: midY, y2: midY, stroke: '#cbc4d0', 'stroke-opacity': 0.14, 'stroke-dasharray': '3 6' }));
-  svg.appendChild(el('text', { x: 10, y: 14, fill: '#cde5ff', 'font-size': 9.5, 'font-weight': 500 }, '+ Light'));
-  svg.appendChild(el('text', { x: 10, y: plotBottom - 4, fill: '#f1b5d7', 'font-size': 9.5, 'font-weight': 500 }, '− Heavy'));
+  svg.appendChild(el('line', { x1: pad, x2: w - pad, y1: midY, y2: midY, stroke: '#cbc4d0', 'stroke-opacity': 0.14, 'stroke-dasharray': '3 6' }));
+  svg.appendChild(el('text', { x: pad, y: 14, fill: '#cde5ff', 'font-size': 9.5, 'font-weight': 500 }, '+ Light'));
+  svg.appendChild(el('text', { x: pad, y: plotBottom - 4, fill: '#f1b5d7', 'font-size': 9.5, 'font-weight': 500 }, '− Heavy'));
 
-  const toPx = (pts) => pts.map((p) => ({ x: pad + p.x * (w - pad * 2), y: pad + p.y * (plotBottom - pad * 1.4) }));
+  const toPx = (pts) => {
+    const minX = pts.length > 1 ? pts[0].x : 0;
+    const maxX = pts.length > 1 ? pts[pts.length - 1].x : 1;
+    const rangeX = maxX - minX > 1e-4 ? maxX - minX : 1;
+    return pts.map((p) => ({
+      x: pad + ((p.x - minX) / rangeX) * (w - pad * 2),
+      y: pad + p.y * (plotBottom - pad * 1.4),
+    }));
+  };
 
   // Faint historical ghost trails (matches AnalysisScreen.js "All evenings" Overlay)
   const others = allDays.filter((d) => d.date !== selectedDate && d.entry?.line?.points?.length).slice(-14);
@@ -671,9 +772,9 @@ export function renderDayLineSvg(container, line, allDays = [], selectedDate = n
   svg.appendChild(el('circle', { cx: last.x, cy: last.y, r: 4.5, fill: '#ffffff' }));
 
   // Bottom axis divider ("Morning" ... "Night", matching AnalysisScreen.js axisRow)
-  svg.appendChild(el('line', { x1: 10, x2: w - 10, y1: plotBottom + 6, y2: plotBottom + 6, stroke: 'rgba(255,255,255,0.05)' }));
-  svg.appendChild(el('text', { x: 10, y: h - 4, fill: 'rgba(203,196,208,0.6)', 'font-size': 10.5, 'font-weight': 500 }, 'Morning'));
-  svg.appendChild(el('text', { x: w - 10, y: h - 4, 'text-anchor': 'end', fill: 'rgba(203,196,208,0.6)', 'font-size': 10.5, 'font-weight': 500 }, 'Night'));
+  svg.appendChild(el('line', { x1: pad, x2: w - pad, y1: plotBottom + 6, y2: plotBottom + 6, stroke: 'rgba(255,255,255,0.05)' }));
+  svg.appendChild(el('text', { x: pad, y: h - 4, fill: 'rgba(203,196,208,0.6)', 'font-size': 10.5, 'font-weight': 500 }, 'Morning'));
+  svg.appendChild(el('text', { x: w - pad, y: h - 4, 'text-anchor': 'end', fill: 'rgba(203,196,208,0.6)', 'font-size': 10.5, 'font-weight': 500 }, 'Night'));
 
   container.appendChild(svg);
 }

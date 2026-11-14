@@ -67,16 +67,29 @@
     <section class="kpi-grid">
       <article class="card">
         <div class="card-head">
-          <h2 class="card-title">Motor Behavior (Objective)</h2>
-          <span id="kpiObjPill" class="pill pill-info">0–10</span>
+          <h2 class="card-title">Motor Pace (Signed)</h2>
+          <span id="kpiObjPill" class="pill pill-info">Equilibrium</span>
         </div>
         <div><span id="kpiObjective" class="kpi-val">—</span><span class="kpi-unit">/ 10</span></div>
         <div class="gauge">
-          <div class="gauge-band" title="Normal range: 4.0–6.0 (±1 SD)"></div>
-          <div class="gauge-center" title="Personal baseline (5.0)"></div>
+          <div class="gauge-band" title="Personal equilibrium: 4.0–6.0 (±1 SD)"></div>
+          <div class="gauge-center" title="Personal remission median (5.0)"></div>
           <div id="kpiObjDot" class="gauge-dot"></div>
         </div>
-        <div class="gauge-labels"><span>0 Slowed</span><span>4–6 Normal</span><span>10 Fast</span></div>
+        <div class="gauge-labels"><span>&lt;3.5 Slowed</span><span>4–6 Equilibrium</span><span>&gt;6.8 Agitation</span></div>
+      </article>
+
+      <article class="card">
+        <div class="card-head">
+          <h2 class="card-title">Dysregulation (mean |z|)</h2>
+          <span id="kpiDivPill" class="pill">Spread</span>
+        </div>
+        <div><span id="kpiDivergence" class="kpi-val">—</span><span class="kpi-unit">SD</span></div>
+        <div class="gauge">
+          <div class="gauge-band" style="left:0%;width:40%;" title="Regulated range: 0.0–1.2 SD from baseline"></div>
+          <div id="kpiDivDot" class="gauge-dot"></div>
+        </div>
+        <div class="gauge-labels"><span>0.0 Calm</span><span>&lt;1.2 Regulated</span><span>3.0+ Dysreg.</span></div>
       </article>
 
       <article class="card">
@@ -90,20 +103,6 @@
           <div id="kpiSubDot" class="gauge-dot"></div>
         </div>
         <div class="gauge-labels"><span>0 Heavy</span><span>5 Neutral</span><span>10 Light</span></div>
-      </article>
-
-      <article class="card">
-        <div class="card-head">
-          <h2 class="card-title">Mood vs. Motor Gap</h2>
-          <span id="kpiDivPill" class="pill">Alignment</span>
-        </div>
-        <div><span id="kpiDivergence" class="kpi-val">—</span><span class="kpi-unit">pts</span></div>
-        <div class="gauge">
-          <div class="gauge-band" style="left:35%;width:30%;" title="Aligned within ±1.5 pts"></div>
-          <div class="gauge-center"></div>
-          <div id="kpiDivDot" class="gauge-dot"></div>
-        </div>
-        <div class="gauge-labels"><span>−5 Mood worse</span><span>0 Aligned</span><span>+5 Motor slower</span></div>
       </article>
 
       <article class="card">
@@ -124,11 +123,12 @@
     <section class="grid-2">
       <article class="card">
         <div class="card-head">
-          <h2 class="section-title">Motor Behavior vs. Perceived Mood Over Time</h2>
+          <h2 class="section-title">Motor Pace vs. Perceived Mood Over Time</h2>
           <div class="legend">
-            <span class="legend-item"><span class="swatch" style="background:#cde5ff;box-shadow:0 0 8px rgba(205,229,255,0.6)"></span>Motor (Objective)</span>
+            <span class="legend-item"><span class="swatch" style="background:#cde5ff;box-shadow:0 0 8px rgba(205,229,255,0.6)"></span>Motor Pace (Signed)</span>
             <span class="legend-item"><span class="swatch" style="background:#f1b5d7;box-shadow:0 0 8px rgba(241,181,215,0.6)"></span>Mood (Subjective)</span>
-            <span class="legend-item"><span class="swatch" style="background:rgba(212,187,255,0.32);border-radius:2px"></span>Normal (4–6)</span>
+            <span class="legend-item"><span class="swatch" style="background:rgba(212,187,255,0.32);border-radius:2px"></span>Equilibrium (4–6)</span>
+            <span class="legend-item"><span class="swatch" style="background:rgba(255,216,190,0.45);border-radius:2px"></span>Agitation (&gt;6.8)</span>
           </div>
         </div>
         <div id="dualChart" class="chart-box"></div>
@@ -136,14 +136,14 @@
 
       <article class="card">
         <div class="card-head">
-          <h2 class="section-title">Clinical Profile vs. Personal Baseline</h2>
-          <span class="pill">Shaded = Normal (±1 SD)</span>
+          <h2 class="section-title">Clinical Profile vs. Personal Equilibrium</h2>
+          <span class="pill">Shaded = Equilibrium (±1 SD)</span>
         </div>
         <div id="domainBars" class="domain-bars"></div>
         <div class="gauge-labels" style="padding: 0 4px;">
-          <span style="color:var(--pink)">← −3 SD (Slower / Heavier)</span>
-          <span>0 Baseline</span>
-          <span style="color:var(--blue)">+3 SD (Faster / Lighter) →</span>
+          <span style="color:var(--pink)">← −3 SD (Slowed / Erratic)</span>
+          <span>0 Equilibrium</span>
+          <span style="color:var(--peach)">+3 SD (Agitation / Dysreg.) →</span>
         </div>
       </article>
     </section>
@@ -152,9 +152,10 @@
       <div class="card-head">
         <h2 class="section-title">Daily Feature Scorecard</h2>
         <div class="scale-legend">
-          <span style="color:var(--pink)">Slower / Heavier (−3 SD)</span>
+          <span style="color:var(--pink)">Slowed / Erratic</span>
           <div class="scale-bar"></div>
-          <span style="color:var(--blue)">Faster / Lighter (+3 SD)</span>
+          <span style="color:var(--blue)">Equilibrium</span>
+          <span style="color:var(--peach)">· Agitation (&gt;+1.8 SD)</span>
         </div>
       </div>
       <div id="heatmapChart" class="chart-box"></div>
@@ -164,11 +165,15 @@
       <article class="card">
         <div class="card-head">
           <h2 class="card-title">Hand Speed · Day Line</h2>
-          <span id="drawDelta" class="pill">mm/s</span>
+          <div class="pill-group">
+            <span class="pill pill-info" title="Day Line kinematics are exploratory because emotional curve shape and memory-recall pauses affect speed">Exploratory</span>
+            <span id="drawDelta" class="pill">mm/s</span>
+          </div>
         </div>
         <div id="drawHero" class="mod-hero">
-          <span class="mod-num">—</span><span class="mod-unit">mm/s latest · higher = faster</span>
+          <span class="mod-num">—</span><span class="mod-unit">mm/s latest · ref = equilibrium</span>
         </div>
+        <p class="mod-note">Exploratory: emotional curve shape &amp; recall pauses affect stroke speed.</p>
         <div id="drawChart" class="chart-box"></div>
       </article>
 

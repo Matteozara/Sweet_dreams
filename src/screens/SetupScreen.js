@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card, Header, Toggle } from '../components/Chrome';
-import { PrimaryButton } from '../components/Buttons';
+import { GhostButton, PrimaryButton } from '../components/Buttons';
 import TimeSheet from '../components/TimeSheet';
 import { formatTime } from '../line';
 import { card, colors, font, radius, space, type } from '../theme';
@@ -12,7 +12,7 @@ import { card, colors, font, radius, space, type } from '../theme';
  * Shown once on first launch, and again from the header gear, where it gets a
  * way back out and saves instead of continuing.
  */
-export default function SetupScreen({ profile, onDone, onBack, editing = false }) {
+export default function SetupScreen({ profile, onDone, onBack, onResetToday, editing = false }) {
   const insets = useSafeAreaInsets();
   const [reminder, setReminder] = useState(profile.reminder);
   const [picking, setPicking] = useState(false);
@@ -64,10 +64,15 @@ export default function SetupScreen({ profile, onDone, onBack, editing = false }
           )}
         </View>
 
-        <PrimaryButton
-          title={editing ? 'Save' : 'Continue'}
-          onPress={() => onDone({ reminder })}
-        />
+        <View style={styles.actions}>
+          {editing && onResetToday && (
+            <GhostButton title="Reset today's check-in" onPress={onResetToday} />
+          )}
+          <PrimaryButton
+            title={editing ? 'Save' : 'Continue'}
+            onPress={() => onDone({ reminder })}
+          />
+        </View>
       </View>
 
       <TimeSheet
@@ -103,6 +108,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   note: { fontFamily: font.regular, fontSize: 12, color: colors.faint, marginTop: 10, marginLeft: 4 },
+  actions: { gap: 10 },
   divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
   reminder: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   badge: {

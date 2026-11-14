@@ -6,7 +6,7 @@ import { askGemini, stateFrom, warner } from './gemini';
 const MAX_CHARS = 20000;
 const warn = warner('contentState');
 
-const PROMPT = `Below is someone's short evening reflection, their answer to "How was your day?".
+const PROMPT = `Below is someone's short evening reflection, their answer to "How did you feel today?".
 It was either typed or transcribed from speech, so it may contain recognition errors or be in any language.
 Judge their state from WHAT they say: the events they describe, the emotions they name or imply,
 how they talk about themselves and others, worry or rumination, and signs of energy, hope or relief.

@@ -3,6 +3,9 @@ import { dayKey } from './line';
 
 const PROFILE = 'sweetdreams.profile.v1';
 const ENTRIES = 'sweetdreams.entries.v1';
+export const CLEAR_TODAY_ONCE = 'sweetdreams.clearTodayOnce.20261114.v4';
+
+let clearTodayInFlight = null;
 
 export const defaultProfile = {
   onboarded: false,
@@ -27,14 +30,43 @@ async function read(key, fallback) {
   }
 }
 
+export async function clearTodayEntryOnce(currentEntries = null) {
+  if (clearTodayInFlight) return clearTodayInFlight;
+  clearTodayInFlight = (async () => {
+    try {
+      const done = await AsyncStorage.getItem(CLEAR_TODAY_ONCE);
+      if (done === '1') return null;
+      await AsyncStorage.setItem(CLEAR_TODAY_ONCE, '1');
+      const base = currentEntries ?? (await read(ENTRIES, []));
+      const today = dayKey();
+      const filtered = base.filter((e) => e.date !== today);
+      await saveEntries(filtered);
+      return filtered;
+    } catch {
+      return null;
+    } finally {
+      clearTodayInFlight = null;
+    }
+  })();
+  return clearTodayInFlight;
+}
+
 export async function loadAll() {
-  const [profile, entries] = await Promise.all([read(PROFILE, null), read(ENTRIES, [])]);
-  return { profile: { ...defaultProfile, ...(profile || {}) }, entries };
+  const [profile, rawEntries] = await Promise.all([read(PROFILE, null), read(ENTRIES, [])]);
+  const cleared = await clearTodayEntryOnce(rawEntries);
+  return { profile: { ...defaultProfile, ...(profile || {}) }, entries: cleared ?? rawEntries };
 }
 
 export const saveProfile = (profile) => AsyncStorage.setItem(PROFILE, JSON.stringify(profile)).catch(() => {});
 export const saveEntries = (entries) => AsyncStorage.setItem(ENTRIES, JSON.stringify(entries)).catch(() => {});
 export const clearAllData = () => AsyncStorage.multiRemove([PROFILE, ENTRIES]).catch(() => {});
+
+export async function removeTodayEntry(entries = []) {
+  const today = dayKey();
+  const next = entries.filter((e) => e.date !== today);
+  await saveEntries(next);
+  return next;
+}
 
 /**
  * One entry per day: a new one for the same date replaces the old one.
@@ -161,7 +193,7 @@ export function sampleEntries(existing = []) {
     if (taken.has(date)) continue;
     const base = 0.68 - (16 - back) * 0.02; // slowly lighter over the two weeks
     const points = Array.from({ length: 40 }, (_, i) => {
-      const x = 0.04 + (i / 39) * 0.92;
+      const x = i / 39;
       const y =
         base +
         0.13 * Math.sin(x * 5 + back * 1.7) +

@@ -5,7 +5,7 @@ import { mean, median } from './stats.js';
 import { analyzeDrawing, aggregateDrawingWeek } from './drawing.js';
 import { analyzeTypingEntry, aggregateTypingWeek } from './typing.js';
 import { analyzeVoiceEntry, aggregateVoiceWeek } from './voice.js';
-import { computeBaseline, normalizeFeature } from './normalization.js';
+import { classifyMotorState, computeBaseline, normalizeFeature } from './normalization.js';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -52,29 +52,76 @@ export function buildWeeklyAnalysis(entries, { phq9 = 0, sigmaPool = null } = {}
       drawingPauseTimeMs: draw?.totalPauseTimeMs ?? null,
       ikdMedianMs: typ && !typ.dropped ? typ.medianIkdMs : null,
       ikdMadMs: typ && !typ.dropped ? typ.ikdMadMs : null,
+      backspaceRate: typ && !typ.dropped ? typ.backspaceRate : null,
       typingSessionMs: typ && !typ.dropped ? typ.medianSessionLengthMs : null,
       voicePauseRatio: voi && voi.hasMetering && voi.quality.status !== 'rejected' ? voi.pauseRatio : null,
+      voiceLongPausesPerMin:
+        voi && voi.hasMetering && voi.quality.status !== 'rejected' ? voi.longPausesPerMin : null,
     };
   });
 
   const baseline = computeBaseline(dailyRows, { phq9, sigmaPool });
 
-  // Modality aggregates and baseline z-scores over any set of evenings.
+  // Modality aggregates, exploratory Day Line tag, and signed + |z| dysregulation scores.
   const summarize = (set) => {
-    const drawing = aggregateDrawingWeek(set);
+    const rawDrawing = aggregateDrawingWeek(set);
+    // Explicitly mark Day Line kinematics as exploratory (emotional curve shape & recall pauses affect speed).
+    const drawing = rawDrawing ? { ...rawDrawing, exploratory: true } : null;
     const typing = aggregateTypingWeek(set);
     const voice = aggregateVoiceWeek(set);
-    const zScores = baseline.ready
-      ? {
-          drawingSpeed: normalizeFeature(drawing?.meanSpeed, baseline.stats.drawingSpeed, { signed: true }),
-          drawingPauseTimeMs: normalizeFeature(drawing?.totalPauseTimeMs, baseline.stats.drawingPauseTimeMs, { signed: true }),
-          ikdMedianMs: normalizeFeature(typing?.medianIkdMs, baseline.stats.ikdMedianMs, { signed: false }),
-          ikdMadMs: normalizeFeature(typing?.ikdMadMs, baseline.stats.ikdMadMs, { signed: true }),
-          typingSessionMs: normalizeFeature(typing?.medianSessionLengthMs, baseline.stats.typingSessionMs, { signed: true }),
-          voicePauseRatio: normalizeFeature(voice?.pauseRatio, baseline.stats.voicePauseRatio, { signed: true }),
-        }
-      : null;
-    return { drawing, typing, voice, zScores };
+
+    if (!baseline.ready) {
+      return { drawing, typing, voice, zScores: null, signedPaceZ: null, dysregulationZ: null, motorState: null };
+    }
+
+    const ikdSignedRaw = normalizeFeature(typing?.medianIkdMs, baseline.stats.ikdMedianMs, { signed: true });
+    const zScores = {
+      drawingSpeed: normalizeFeature(drawing?.meanSpeed, baseline.stats.drawingSpeed, { signed: true }),
+      drawingPauseTimeMs: normalizeFeature(drawing?.totalPauseTimeMs, baseline.stats.drawingPauseTimeMs, { signed: true }),
+      ikdMedianMs: normalizeFeature(typing?.medianIkdMs, baseline.stats.ikdMedianMs, { signed: false }),
+      ikdMedianSignedMs: ikdSignedRaw,
+      ikdMadMs: normalizeFeature(typing?.ikdMadMs, baseline.stats.ikdMadMs, { signed: true }),
+      backspaceRate: normalizeFeature(typing?.backspaceRate, baseline.stats.backspaceRate, { signed: true }),
+      typingSessionMs: normalizeFeature(typing?.medianSessionLengthMs, baseline.stats.typingSessionMs, { signed: true }),
+      voicePauseRatio: normalizeFeature(voice?.pauseRatio, baseline.stats.voicePauseRatio, { signed: true }),
+      voiceLongPausesPerMin: normalizeFeature(voice?.longPausesPerMin, baseline.stats.voiceLongPausesPerMin, {
+        signed: true,
+      }),
+    };
+
+    // Signed pace axis (+ = faster / more fluent, - = slowed / longer pauses, 0 = personal equilibrium).
+    const paceComponents = [
+      zScores.drawingSpeed,
+      zScores.drawingPauseTimeMs !== null ? -zScores.drawingPauseTimeMs : null,
+      ikdSignedRaw !== null ? -ikdSignedRaw : null,
+      zScores.voicePauseRatio !== null ? -zScores.voicePauseRatio : null,
+      zScores.voiceLongPausesPerMin !== null ? -zScores.voiceLongPausesPerMin : null,
+    ].filter((v) => typeof v === 'number' && Number.isFinite(v));
+    const signedPaceZ = paceComponents.length ? median(paceComponents) : null;
+
+    // Absolute-deviation score `mean(|z|)` alongside the signed score (Papers #4 & #7).
+    const absComponents = [
+      zScores.drawingSpeed,
+      zScores.drawingPauseTimeMs,
+      zScores.ikdMedianMs,
+      zScores.ikdMadMs,
+      zScores.backspaceRate,
+      zScores.voicePauseRatio,
+      zScores.voiceLongPausesPerMin,
+    ]
+      .filter((v) => typeof v === 'number' && Number.isFinite(v))
+      .map((v) => Math.abs(v));
+    const dysregulationZ = absComponents.length ? mean(absComponents) : null;
+
+    const motorState = classifyMotorState({
+      signedPaceZ,
+      dysregulationZ,
+      ikdMadZ: zScores.ikdMadMs,
+      backspaceZ: zScores.backspaceRate,
+      nightShare: typing?.nightShare ?? 0,
+    });
+
+    return { drawing, typing, voice, zScores, signedPaceZ, dysregulationZ, motorState };
   };
 
   // Group entries by Monday week key.
@@ -89,7 +136,7 @@ export function buildWeeklyAnalysis(entries, { phq9 = 0, sigmaPool = null } = {}
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([startKey, weekEntries]) => {
       const endKey = weekEndKey(startKey);
-      const { drawing, typing, voice, zScores } = summarize(weekEntries);
+      const { drawing, typing, voice, zScores, signedPaceZ, dysregulationZ, motorState } = summarize(weekEntries);
       // The same summary over a single evening, for the day-by-day view.
       const days = weekEntries.map((entry) => ({ entry, date: entry.date, ...summarize([entry]) }));
       const scoredDays = weekEntries
@@ -117,6 +164,9 @@ export function buildWeeklyAnalysis(entries, { phq9 = 0, sigmaPool = null } = {}
         voice,
         dayScore,
         zScores,
+        signedPaceZ,
+        dysregulationZ,
+        motorState,
       };
     });
 

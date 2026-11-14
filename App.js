@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Keyboard, Platform, StyleSheet, View } from 'react-native';
+import { AppState, Keyboard, Platform, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -14,10 +14,21 @@ import SplashScreen from './src/screens/SplashScreen';
 import SetupScreen from './src/screens/SetupScreen';
 import ReflectionScreen from './src/screens/ReflectionScreen';
 import DayLineScreen from './src/screens/DayLineScreen';
-import RestScreen from './src/screens/RestScreen';
 import CalendarScreen from './src/screens/CalendarScreen';
 import SuggestionsScreen from './src/screens/SuggestionsScreen';
-import { clearAllData, defaultProfile, loadAll, sampleEntries, saveEntries, saveProfile, upsertEntry } from './src/storage';
+import {
+  CLEAR_TODAY_ONCE,
+  clearAllData,
+  clearTodayEntryOnce,
+  defaultProfile,
+  loadAll,
+  removeTodayEntry,
+  sampleEntries,
+  saveEntries,
+  saveProfile,
+  upsertEntry,
+} from './src/storage';
+import { suggestionsForEntry } from './src/activities';
 import { syncReminder } from './src/services';
 import { analyzeVoiceState } from './src/voiceState';
 import { analyzeContentState, answerText } from './src/contentState';
@@ -27,7 +38,6 @@ import { colors } from './src/theme';
 
 const TABS = [
   { key: 'reflection', label: 'Reflection', icon: 'moon' },
-  { key: 'rest', label: 'Rest', icon: 'bed' },
   { key: 'calendar', label: 'Calendar', icon: 'calendar' },
 ];
 
@@ -51,6 +61,32 @@ function useKeyboardOpen() {
   return open;
 }
 
+/** Reactive `YYYY-MM-DD` key that rolls over automatically at local midnight and on app resume. */
+function useTodayKey() {
+  const [key, setKey] = useState(() => dayKey());
+  useEffect(() => {
+    let timer;
+    const scheduleNextMidnight = () => {
+      const now = new Date();
+      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 100);
+      timer = setTimeout(() => {
+        setKey(dayKey());
+        scheduleNextMidnight();
+      }, Math.max(250, nextMidnight.getTime() - now.getTime()));
+    };
+    scheduleNextMidnight();
+
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setKey(dayKey());
+    });
+    return () => {
+      clearTimeout(timer);
+      sub.remove();
+    };
+  }, []);
+  return key;
+}
+
 /**
  * Splash on every launch, then setup once, then the evening itself:
  * question -> day line -> rest. The calendar of past evenings sits beside them in the bottom bar,
@@ -68,8 +104,8 @@ export default function App() {
   const [tab, setTab] = useState('reflection');
   const [draft, setDraft] = useState(null); // tonight's answer, while the line is being drawn
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [suggesting, setSuggesting] = useState(false); // the step between the line and Rest
   const keyboardOpen = useKeyboardOpen();
+  const currentDay = useTodayKey();
 
   useEffect(() => {
     loadAll().then((data) => {
@@ -77,6 +113,17 @@ export default function App() {
       setProfile(data.profile);
     });
   }, []);
+
+  // Also clear today's existing entry once under live Fast Refresh so testing starts fresh immediately.
+  useEffect(() => {
+    if (!profile) return;
+    clearTodayEntryOnce(entries).then((filtered) => {
+      if (!filtered) return;
+      setEntries(filtered);
+      setDraft(null);
+      setTab('reflection');
+    });
+  }, [Boolean(profile), CLEAR_TODAY_ONCE]);
 
   const updateProfile = (patch) => {
     const next = { ...profile, ...patch };
@@ -90,8 +137,7 @@ export default function App() {
   };
 
   // The newest entry for today: with keepEveryTry there can be several.
-  const today = [...entries].reverse().find((e) => e.date === dayKey());
-  const latest = today ?? entries[entries.length - 1];
+  const today = [...entries].reverse().find((e) => e.date === currentDay);
 
   const finishSetup = ({ reminder }) => {
     updateProfile({ reminder, onboarded: true });
@@ -104,38 +150,81 @@ export default function App() {
     setSettingsOpen(false);
   };
 
+  const patchEntryById = (entryId, patch) =>
+    setEntries((list) => {
+      const patched = list.map((e) => (e.id === entryId ? { ...e, ...patch } : e));
+      saveEntries(patched);
+      return patched;
+    });
+
+  const patchEntryWithSuggestions = (entryId, patch) =>
+    setEntries((list) => {
+      const patched = list.map((e) => {
+        if (e.id !== entryId) return e;
+        const merged = { ...e, ...patch };
+        // Keep suggestions locked once the user has scheduled an activity; otherwise refine as scores arrive.
+        const hasScheduled = Object.keys(merged.scheduledSuggestions || {}).length > 0;
+        if (hasScheduled) return merged;
+        const picked = suggestionsForEntry(merged, { fallbackPhq9: profile?.simulatedPhq9 ?? 12 });
+        return {
+          ...merged,
+          moodScore: picked.moodScore,
+          suggestionLevel: picked.level.id,
+          suggestions: picked.items,
+        };
+      });
+      saveEntries(patched);
+      return patched;
+    });
+
+  const markSuggestionScheduled = (entryObj, activityId, kind) => {
+    if (!entryObj) return;
+    patchEntryById(entryObj.id, {
+      scheduledSuggestions: { ...(entryObj.scheduledSuggestions || {}), [activityId]: kind },
+    });
+  };
+
+  // Start analyzing words/voice immediately while the user draws their Day Line.
+  const startReflection = (answer) => {
+    const contentPromise = analyzeContentState(answerText(answer));
+    const voicePromise = answer.type === 'audio' ? analyzeVoiceState(answer.uri) : Promise.resolve(null);
+    setDraft({ answer, startedAt: new Date().toISOString(), contentPromise, voicePromise });
+  };
+
   const closeDay = (line) => {
-    const entry = {
+    const baseEntry = {
       id: String(Date.now()),
       date: dayKey(),
       startedAt: draft.startedAt,
       finishedAt: new Date().toISOString(),
       answer: draft.answer,
       line,
+      scheduledSuggestions: {},
+    };
+    const initialPick = suggestionsForEntry(baseEntry, { fallbackPhq9: profile.simulatedPhq9 });
+    const entry = {
+      ...baseEntry,
+      moodScore: initialPick.moodScore,
+      suggestionLevel: initialPick.level.id,
+      suggestions: initialPick.items,
     };
     const next = upsertEntry(entries, entry, { keepEveryTry: __DEV__ && profile.keepEveryTry });
     updateEntries(next);
+    const pendingContent = draft.contentPromise;
+    const pendingVoice = draft.voicePromise;
     setDraft(null);
-    setSuggesting(true); // suggestions first, then the wind-down
-    setTab('rest');
-    // These arrive after the evening is closed, and are added to the entry when they do.
-    const patchEntry = (patch) =>
-      setEntries((list) => {
-        const patched = list.map((e) => (e.id === entry.id ? { ...e, ...patch } : e));
-        saveEntries(patched);
-        return patched;
-      });
-    if (entry.answer.type === 'audio') {
-      analyzeVoiceState(entry.answer.uri).then((voiceState) => voiceState && patchEntry({ voiceState }));
+    setTab('reflection');
+
+    // Merge word, voice, and Gemini Day Line scores as soon as each finishes, updating the suggestion tier.
+    if (pendingVoice) {
+      pendingVoice.then((voiceState) => voiceState && patchEntryWithSuggestions(entry.id, { voiceState }));
     }
-    analyzeContentState(answerText(entry.answer)).then((contentState) => contentState && patchEntry({ contentState }));
+    if (pendingContent) {
+      pendingContent.then((contentState) => contentState && patchEntryWithSuggestions(entry.id, { contentState }));
+    }
     scoreDayLine(line).then((dayScore) => {
       if (!dayScore) return;
-      setEntries((list) => {
-        const withScore = list.map((e) => (e.id === entry.id ? { ...e, dayScore } : e));
-        saveEntries(withScore);
-        return withScore;
-      });
+      patchEntryWithSuggestions(entry.id, { dayScore });
     });
   };
 
@@ -159,17 +248,18 @@ export default function App() {
         editing
         profile={profile}
         onDone={saveSettings}
+        onResetToday={
+          today
+            ? async () => {
+                const cleaned = await removeTodayEntry(entries);
+                setEntries(cleaned);
+                setDraft(null);
+                setSettingsOpen(false);
+                setTab('reflection');
+              }
+            : undefined
+        }
         onBack={() => setSettingsOpen(false)}
-      />
-    );
-  } else if (suggesting) {
-    // Its own step in the evening, so the tabs step aside like the day line.
-    key = 'suggestions';
-    screen = (
-      <SuggestionsScreen
-        score={profile.simulatedPhq9}
-        onDone={() => setSuggesting(false)}
-        onSettings={openSettings}
       />
     );
   } else if (draft) {
@@ -209,14 +299,15 @@ export default function App() {
         onSettings={openSettings}
       />
     );
-  } else if (tab === 'rest') {
-    key = 'rest';
+  } else if (today && !(__DEV__ && profile.keepEveryTry)) {
+    key = 'reflection-done';
     nav = true;
     screen = (
-      <RestScreen
-        entry={latest}
-        onCalendar={() => setTab('calendar')}
-        onRedo={() => setTab('reflection')}
+      <SuggestionsScreen
+        completedToday
+        entry={today}
+        score={profile.simulatedPhq9}
+        onMarkScheduled={(activityId, kind) => markSuggestionScheduled(today, activityId, kind)}
         onSettings={openSettings}
       />
     );
@@ -225,7 +316,7 @@ export default function App() {
     nav = true;
     screen = (
       <ReflectionScreen
-        onSubmit={(answer) => setDraft({ answer, startedAt: new Date().toISOString() })}
+        onSubmit={startReflection}
         onSettings={openSettings}
       />
     );

@@ -137,7 +137,7 @@ function Words({ feed, recording, visible, debug, editable, onEdit }) {
   );
 }
 
-/** Step one: "How was your day?" answered by voice, or by keyboard. */
+/** Step one: "How did you feel today?" answered by voice, or by keyboard. */
 export default function ReflectionScreen({ onSubmit, onSettings }) {
   const [mode, setMode] = useState('voice'); // 'voice' | 'text'
   const [text, setText] = useState('');
@@ -336,7 +336,7 @@ export default function ReflectionScreen({ onSubmit, onSettings }) {
               <View style={styles.dot} />
               <Text style={type.eyebrow}>TONIGHT</Text>
             </View>
-            <Text style={[type.display, styles.question]}>How was your day?</Text>
+            <Text style={[type.display, styles.question]}>How did you feel today?</Text>
 
             <View style={styles.card}>
               {mode === 'voice' ? (

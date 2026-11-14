@@ -122,7 +122,7 @@ function Day({ dateKey, entry }) {
         <>
           {points?.length > 1 && (
             <View style={styles.plot}>
-              <DayLine points={points} canvas={entry.line.canvas} maxHeight={150} />
+              <DayLine points={points} canvas={entry.line.canvas} maxHeight={150} showMidline />
               <View style={styles.axisRow}>
                 <Text style={styles.axis}>Morning</Text>
                 <Text style={styles.axis}>Night</Text>

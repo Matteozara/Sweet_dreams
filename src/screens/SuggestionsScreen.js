@@ -4,8 +4,10 @@ import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'rea
 import { Card, Header } from '../components/Chrome';
 import { GlassButton, PrimaryButton, Press } from '../components/Buttons';
 import Icon from '../components/Icon';
+import Moon from '../components/Moon';
 import ActivityIcon from '../components/ActivityIcon';
-import { suggestionsFor } from '../activities';
+import { moodTierSummary, suggestionsFor, suggestionsForEntry } from '../activities';
+import { keyToDate } from '../line';
 import { addToCalendar, formatWhen, remindMe, tomorrowAt } from '../schedule';
 import { colors, radius, space, type } from '../theme';
 
@@ -69,7 +71,13 @@ function SuggestionCard({ item, index, scheduled, onSchedule }) {
     <Card style={styles.card}>
       <View style={styles.cardRow}>
         <ActivityIcon type={item.type} index={index} />
-        <Text style={styles.cardTitle}>{item.title}</Text>
+        <View style={styles.cardCopy}>
+          <Text style={styles.cardMeta}>
+            {item.type}
+            {item.dose ? ` · ${item.dose}` : ''}
+          </Text>
+          <Text style={styles.cardTitle}>{item.title}</Text>
+        </View>
       </View>
       <GlassButton
         small
@@ -84,20 +92,48 @@ function SuggestionCard({ item, index, scheduled, onSchedule }) {
 }
 
 /**
- * Three activities for tonight, chosen by PHQ-9 level and rotated daily.
- * Sits between the day line and the wind-down.
+ * Evening suggestions tailored to today's mood score and rotated daily.
+ * Shown directly on the Reflection tab once today's check-in is complete,
+ * topped with a compact sleeping moon and "Goodnight." greeting.
  */
-export default function SuggestionsScreen({ score, onDone, onSettings }) {
-  const { items } = useMemo(() => suggestionsFor(score), [score]);
+export default function SuggestionsScreen({
+  score,
+  entry = null,
+  completedToday = false,
+  onMarkScheduled,
+  onDone,
+  onSettings,
+}) {
+  const { items, levelId } = useMemo(() => {
+    const date = entry?.date ? keyToDate(entry.date) : new Date();
+    if (entry) {
+      const computed = suggestionsForEntry(entry, { fallbackPhq9: score, date });
+      return {
+        items: (entry.suggestions?.length ? entry.suggestions : computed.items).slice(0, 3),
+        levelId: entry.suggestionLevel || computed.level.id,
+      };
+    }
+    const fallback = suggestionsFor(score, { date });
+    return { items: fallback.items.slice(0, 3), levelId: fallback.level.id };
+  }, [entry, score]);
   const [sheetFor, setSheetFor] = useState(null);
-  const [scheduled, setScheduled] = useState({});
+  const [localScheduled, setLocalScheduled] = useState({});
+  const scheduled = { ...(entry?.scheduledSuggestions || {}), ...localScheduled };
+  const tierNote = moodTierSummary(levelId);
 
   return (
     <View style={styles.screen}>
       <Header onSettings={onSettings} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.head}>
-          <Text style={type.display}>Suggested activities based on your mood</Text>
+          <View style={styles.goodnightRow}>
+            <Moon zeds compact />
+            <View style={styles.goodnightCopy}>
+              <Text style={styles.goodnightTitle}>Goodnight.</Text>
+              <Text style={styles.goodnightSub}>Thank you for sharing today.</Text>
+            </View>
+          </View>
+          <Text style={styles.sub}>{tierNote}</Text>
         </View>
 
         {items.map((item, i) => (
@@ -110,7 +146,9 @@ export default function SuggestionsScreen({ score, onDone, onSettings }) {
           />
         ))}
 
-        <PrimaryButton title="Close Today" onPress={onDone} style={styles.cta} />
+        {!completedToday && onDone && (
+          <PrimaryButton title="Close Today" onPress={onDone} style={styles.cta} />
+        )}
       </ScrollView>
 
       {sheetFor && (
@@ -118,7 +156,8 @@ export default function SuggestionsScreen({ score, onDone, onSettings }) {
           activity={sheetFor}
           onClose={() => setSheetFor(null)}
           onScheduled={(kind) => {
-            setScheduled((s) => ({ ...s, [sheetFor.id]: kind }));
+            setLocalScheduled((s) => ({ ...s, [sheetFor.id]: kind }));
+            onMarkScheduled?.(sheetFor.id, kind);
             setSheetFor(null);
           }}
         />
@@ -129,12 +168,24 @@ export default function SuggestionsScreen({ score, onDone, onSettings }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 32, gap: 12 },
-  head: { marginBottom: 8 },
+  content: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 32, gap: 12 },
+  head: { marginBottom: 6 },
+  goodnightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 4,
+  },
+  goodnightCopy: { flex: 1 },
+  goodnightTitle: { ...type.display, fontSize: 28, lineHeight: 34, color: colors.text },
+  goodnightSub: { ...type.bodySm, color: colors.lilacPale, marginTop: 2 },
+  sub: { ...type.bodySm, color: colors.muted, marginTop: 8 },
 
-  card: { padding: 20, gap: 14 },
+  card: { padding: 18, gap: 12 },
   cardRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  cardTitle: { ...type.headline, color: colors.text, flex: 1 },
+  cardCopy: { flex: 1, gap: 3 },
+  cardMeta: { ...type.eyebrow, fontSize: 10.5, letterSpacing: 1.1, color: colors.subtle },
+  cardTitle: { ...type.headline, color: colors.text },
   cardButton: { alignSelf: 'flex-start' },
   cta: { marginTop: 12 },
 
