@@ -161,6 +161,32 @@ function MetricRow({ label, value, z }) {
   );
 }
 
+/** One evening per row: the 0–10 score and written analysis saved under `field`. Hidden when the week has none. */
+function StateCard({ title, field, entries, empty, note }) {
+  const shown = entries.filter((e) => e[field]?.analysis);
+  if (shown.length === 0) return null;
+  return (
+    <Card style={styles.card}>
+      <View style={styles.cardHead}>
+        <Text style={styles.cardTitle}>{title}</Text>
+        <Badge text={`${shown.length} ${shown.length === 1 ? 'evening' : 'evenings'}`} />
+      </View>
+      {shown.map((e) => (
+        <View key={e.id} style={styles.state}>
+          <View style={styles.stateHead}>
+            <Text style={styles.metricLabel}>
+              {keyToDate(e.date).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' })}
+            </Text>
+            <Text style={styles.metricValue}>{e[field].score === null ? empty : `${e[field].score} / 10`}</Text>
+          </View>
+          <Text style={styles.stateText}>{e[field].analysis}</Text>
+        </View>
+      ))}
+      <Text style={styles.note}>{note}</Text>
+    </Card>
+  );
+}
+
 export default function AnalysisScreen({ entries, onLoadSample, onDeleteAll, onSettings }) {
   const drawn = useMemo(() => entries.filter((e) => e.line?.points?.length > 1), [entries]);
   const run = streak(drawn);
@@ -175,7 +201,6 @@ export default function AnalysisScreen({ entries, onLoadSample, onDeleteAll, onS
   }, [weeks.length]);
 
   const activeWeek = weeks[Math.min(weekIdx, Math.max(0, weeks.length - 1))] || null;
-  const voiceStates = activeWeek ? activeWeek.entries.filter((e) => e.voiceState?.analysis) : [];
 
   const confirmDelete = () => {
     Alert.alert(
@@ -404,30 +429,24 @@ export default function AnalysisScreen({ entries, onLoadSample, onDeleteAll, onS
             </Card>
           )}
 
-          {activeWeek && voiceStates.length > 0 && (
-            <Card style={styles.card}>
-              <View style={styles.cardHead}>
-                <Text style={styles.cardTitle}>How you sounded</Text>
-                <Badge text={`${voiceStates.length} ${voiceStates.length === 1 ? 'evening' : 'evenings'}`} />
-              </View>
-              {voiceStates.map((e) => (
-                <View key={e.id} style={styles.voiceState}>
-                  <View style={styles.voiceStateHead}>
-                    <Text style={styles.metricLabel}>
-                      {keyToDate(e.date).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' })}
-                    </Text>
-                    <Text style={styles.metricValue}>
-                      {e.voiceState.score === null ? 'No speech' : `${e.voiceState.score} / 10`}
-                    </Text>
-                  </View>
-                  <Text style={styles.voiceStateText}>{e.voiceState.analysis}</Text>
-                </View>
-              ))}
-              <Text style={styles.note}>
-                Judged by Gemini from pitch, energy, speaking rate, pauses and voice quality. 0 is depleted or
-                strained, 10 is calm and energised. An impression, not a diagnosis.
-              </Text>
-            </Card>
+          {activeWeek && (
+            <StateCard
+              title="How you sounded"
+              field="voiceState"
+              entries={activeWeek.entries}
+              empty="No speech"
+              note="Judged by Gemini from pitch, energy, speaking rate, pauses and voice quality. 0 is depleted or strained, 10 is calm and energised. An impression, not a diagnosis."
+            />
+          )}
+
+          {activeWeek && (
+            <StateCard
+              title="What you said"
+              field="contentState"
+              entries={activeWeek.entries}
+              empty="Too little"
+              note="Judged by Gemini from the words of your reflection, typed or spoken. 0 is a very heavy day, 10 is a very good one. An impression, not a diagnosis."
+            />
           )}
 
           <Card style={styles.card}>
@@ -497,9 +516,9 @@ const styles = StyleSheet.create({
   metricLabel: { fontFamily: font.regular, fontSize: 13, color: colors.muted, flex: 1 },
   metricRight: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
   metricZ: { fontFamily: font.medium, fontSize: 11, color: colors.lilac, fontVariant: ['tabular-nums'] },
-  voiceState: { gap: 6, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.hairline },
-  voiceStateHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  voiceStateText: { ...type.bodySm, color: colors.text },
+  state: { gap: 6, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.hairline },
+  stateHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  stateText: { ...type.bodySm, color: colors.text },
   metricValue: { fontFamily: font.semibold, fontSize: 13, color: colors.text, fontVariant: ['tabular-nums'] },
 
   plot: {
