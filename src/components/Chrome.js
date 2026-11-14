@@ -1,9 +1,27 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from './Icon';
-import { GradientFill } from './Buttons';
-import { colors, font, radius } from '../theme';
+import { GradientFill, Press } from './Buttons';
+import { card, colors, font, radius } from '../theme';
+
+/**
+ * A frosted panel. iOS gets a real backdrop blur; Android keeps the flat
+ * translucent fill, because its blur re-renders every frame and is the
+ * fastest way to lose the frame budget on a mid-range phone.
+ */
+export function Card({ children, style, intensity = 22 }) {
+  const flat = StyleSheet.flatten([card, styles.cardBase, style]);
+  if (Platform.OS === 'ios') {
+    return (
+      <BlurView intensity={intensity} tint="dark" style={[flat, styles.cardBlur]}>
+        {children}
+      </BlurView>
+    );
+  }
+  return <View style={flat}>{children}</View>;
+}
 
 /** Top bar: wordmark on the left, a quiet chip naming the screen on the right. */
 export function Header({ chip, onBack }) {
@@ -12,9 +30,9 @@ export function Header({ chip, onBack }) {
     <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
       <View style={styles.headerLeft}>
         {onBack && (
-          <Pressable onPress={onBack} hitSlop={14} accessibilityRole="button" accessibilityLabel="Back">
+          <Press onPress={onBack} hitSlop={14} scaleTo={0.9} accessibilityLabel="Back">
             <Icon name="back" size={20} color="rgba(255,255,255,0.7)" strokeWidth={2} />
-          </Pressable>
+          </Press>
         )}
         <Text style={styles.wordmark}>Sweet Dreams</Text>
       </View>
@@ -27,27 +45,52 @@ export function Header({ chip, onBack }) {
   );
 }
 
+/**
+ * Tabs are peers, so switching does not animate — a slide would imply a
+ * hierarchy that isn't there, and it is paid for dozens of times a session.
+ * The feedback is the active tint, its glow, and one haptic.
+ */
 export function BottomNav({ items, active, onChange }) {
   const insets = useSafeAreaInsets();
-  return (
-    <View style={[styles.nav, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+  const row = (
+    <View style={[styles.navRow, { paddingBottom: Math.max(insets.bottom, 8) }]}>
       {items.map((item) => {
         const on = item.key === active;
         return (
-          <Pressable
+          <Press
             key={item.key}
             onPress={() => onChange(item.key)}
+            scaleTo={0.94}
             style={styles.navItem}
+            innerStyle={styles.navItemInner}
             accessibilityRole="tab"
             accessibilityState={{ selected: on }}
+            accessibilityLabel={item.label}
           >
-            <Icon name={item.icon} size={22} color={on ? colors.lilacPale : colors.faint} filled={on && item.icon === 'moon'} />
+            <View style={styles.iconWrap}>
+              {on && <View style={styles.iconGlow} pointerEvents="none" />}
+              <Icon
+                name={item.icon}
+                size={22}
+                color={on ? colors.lilacPale : colors.faint}
+                filled={on && item.icon === 'moon'}
+              />
+            </View>
             <Text style={[styles.navLabel, on && styles.navLabelOn]}>{item.label}</Text>
-          </Pressable>
+          </Press>
         );
       })}
     </View>
   );
+
+  if (Platform.OS === 'ios') {
+    return (
+      <BlurView intensity={30} tint="dark" style={styles.nav}>
+        {row}
+      </BlurView>
+    );
+  }
+  return <View style={[styles.nav, styles.navAndroid]}>{row}</View>;
 }
 
 /** iOS-proportioned switch with a pastel track. */
@@ -89,6 +132,10 @@ export function FadeIn({ children, style, duration = 450, delay = 0 }) {
 }
 
 const styles = StyleSheet.create({
+  cardBase: { overflow: 'hidden' },
+  // On iOS the blur supplies most of the surface, so the fill steps back.
+  cardBlur: { backgroundColor: 'rgba(31,30,44,0.38)' },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -102,15 +149,23 @@ const styles = StyleSheet.create({
   chipText: { fontFamily: font.medium, fontSize: 12, color: 'rgba(255,255,255,0.7)' },
 
   nav: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingTop: 10,
-    paddingHorizontal: 48,
-    backgroundColor: 'rgba(14,13,26,0.85)',
     borderTopWidth: 1,
     borderTopColor: colors.hairline,
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(14,13,26,0.55)' : undefined,
   },
-  navItem: { minWidth: 72, minHeight: 44, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  navAndroid: { backgroundColor: 'rgba(14,13,26,0.96)' },
+  navRow: { flexDirection: 'row', justifyContent: 'space-around', paddingTop: 10, paddingHorizontal: 24 },
+  navItem: { flex: 1 },
+  navItemInner: { minHeight: 44, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  iconWrap: { alignItems: 'center', justifyContent: 'center' },
+  iconGlow: {
+    position: 'absolute',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(235,221,255,0.12)',
+    boxShadow: '0 0 12px rgba(235,221,255,0.45)',
+  },
   navLabel: { fontFamily: font.medium, fontSize: 11, color: colors.faint },
   navLabelOn: { fontFamily: font.semibold, color: colors.lilacPale },
 

@@ -1,75 +1,120 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, Text, StyleSheet, View } from 'react-native';
-import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
-import { colors, font, radius } from '../theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { cubicBezier, useReducedMotion } from 'react-native-reanimated';
+import { tap } from '../services';
+import { colors, font, motion, radius } from '../theme';
 
+const EASE_OUT = cubicBezier(0.23, 1, 0.32, 1);
+
+/**
+ * Shared press behaviour: the visual settles in on press-IN (that is the
+ * latency a finger actually feels) and a haptic fires on commit, paired with
+ * the visual, never on its own. Reduced motion drops the scale for a fade.
+ */
+export function Press({
+  children,
+  onPress,
+  disabled,
+  scaleTo = 0.97,
+  haptic = true,
+  style,
+  innerStyle,
+  hitSlop,
+  ...rest
+}) {
+  const [pressed, setPressed] = useState(false);
+  const reduced = useReducedMotion();
+  return (
+    <Pressable
+      onPress={(e) => {
+        if (haptic) tap();
+        onPress?.(e);
+      }}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      disabled={disabled}
+      hitSlop={hitSlop}
+      pressRetentionOffset={16}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: !!disabled }}
+      style={style}
+      {...rest}
+    >
+      <Animated.View
+        style={[
+          {
+            transform: [{ scale: pressed && !reduced ? scaleTo : 1 }],
+            opacity: disabled ? 0.35 : pressed && reduced ? 0.7 : 1,
+            transitionProperty: ['transform', 'opacity'],
+            transitionDuration: motion.fast,
+            transitionTimingFunction: EASE_OUT,
+          },
+          innerStyle,
+        ]}
+      >
+        {children}
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+/**
+ * The pastel fill behind a pill.
+ *
+ * This is a native gradient view rather than an SVG one: an `<Svg>` sized in
+ * percentages has to resolve its parent's layout, and inside an animated view
+ * it can resolve to nothing and paint an invisible button. A LinearGradient
+ * just fills the box it is given.
+ */
 export function GradientFill({ from = colors.lilacPale, via = colors.lilac, to = colors.pink }) {
   return (
-    <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} pointerEvents="none">
-      <Defs>
-        <LinearGradient id="fill" x1="0" y1="0" x2="1" y2="0">
-          <Stop offset="0" stopColor={from} />
-          <Stop offset="0.5" stopColor={via} />
-          <Stop offset="1" stopColor={to} />
-        </LinearGradient>
-      </Defs>
-      <Rect width="100%" height="100%" fill="url(#fill)" />
-    </Svg>
+    <LinearGradient
+      colors={[from, via, to]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 0 }}
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+    />
   );
 }
 
 /** Luminous pastel pill: the one primary action on a screen. */
 export function PrimaryButton({ title, onPress, disabled, icon, iconRight, style }) {
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityState={{ disabled: !!disabled }}
-      style={({ pressed }) => [
-        styles.primary,
-        disabled && styles.disabled,
-        pressed && styles.pressed,
-        style,
-      ]}
-    >
+    <Press onPress={onPress} disabled={disabled} scaleTo={0.98} style={style} innerStyle={styles.primary}>
       <View style={styles.clip}>
         <GradientFill />
       </View>
       {icon && <View>{icon}</View>}
       <Text style={styles.primaryText}>{title}</Text>
       {iconRight && <View>{iconRight}</View>}
-    </Pressable>
+    </Press>
   );
 }
 
 /** Frosted pill: secondary actions. */
 export function GlassButton({ title, onPress, icon, small, style, disabled }) {
   return (
-    <Pressable
+    <Press
       onPress={onPress}
       disabled={disabled}
-      accessibilityRole="button"
-      style={({ pressed }) => [styles.glass, small && styles.glassSmall, pressed && styles.pressed, style]}
+      style={style}
+      innerStyle={[styles.glass, small && styles.glassSmall]}
     >
       {icon}
       <Text style={[styles.glassText, small && styles.glassTextSmall]}>{title}</Text>
-    </Pressable>
+    </Press>
   );
 }
 
 /** Text-only action. */
 export function GhostButton({ title, onPress, icon, style }) {
   return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={10}
-      accessibilityRole="button"
-      style={({ pressed }) => [styles.ghost, pressed && { opacity: 0.6 }, style]}
-    >
+    <Press onPress={onPress} hitSlop={10} scaleTo={0.96} style={style} innerStyle={styles.ghost}>
       {icon}
       <Text style={styles.ghostText}>{title}</Text>
-    </Pressable>
+    </Press>
   );
 }
 
@@ -81,15 +126,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    shadowColor: colors.lilac,
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 0 },
+    // A solid floor under the gradient: if the fill ever fails to paint, the
+    // pill is still lavender and the ink text on it is still readable.
+    backgroundColor: colors.lilac,
+    boxShadow: '0 0 24px rgba(212,187,255,0.35)',
   },
   clip: { ...StyleSheet.absoluteFillObject, borderRadius: radius.full, overflow: 'hidden' },
   primaryText: { fontFamily: font.semibold, fontSize: 16, letterSpacing: -0.2, color: colors.ink },
-  disabled: { opacity: 0.35 },
-  pressed: { opacity: 0.88, transform: [{ scale: 0.98 }] },
   glass: {
     height: 52,
     paddingHorizontal: 24,

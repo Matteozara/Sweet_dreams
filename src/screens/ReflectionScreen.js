@@ -3,7 +3,6 @@ import {
   Alert,
   Animated,
   Easing,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -159,10 +158,15 @@ export default function ReflectionScreen({ onSubmit }) {
   return (
     <View style={styles.screen}>
       <Header chip="Evening Reflection" />
-      <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {/* automaticallyAdjustKeyboardInsets uses the real keyboard frame, which
+            KeyboardAvoidingView cannot do from inside a nested layout. */}
         <ScrollView
+          style={styles.screen}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          automaticallyAdjustKeyboardInsets
+          contentInsetAdjustmentBehavior="automatic"
           showsVerticalScrollIndicator={false}
         >
           <View>
@@ -240,7 +244,6 @@ export default function ReflectionScreen({ onSubmit }) {
             style={styles.cta}
           />
         </ScrollView>
-      </KeyboardAvoidingView>
     </View>
   );
 }

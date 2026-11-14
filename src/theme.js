@@ -52,6 +52,9 @@ export const card = {
   borderColor: colors.hairline,
 };
 
+// Shared motion durations, so everything that moves feels related.
+export const motion = { fast: 120, base: 260, slow: 450 };
+
 // Gradient stops shared by the day line and the primary button.
 export const lineStops = [
   { offset: 0, color: colors.pink },

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Defs, Line, Path } from 'react-native-svg';
-import { Header } from '../components/Chrome';
+import { Card, Header } from '../components/Chrome';
 import { GhostButton } from '../components/Buttons';
 import { GlowLine, LineGradient } from '../components/LineArt';
 import { dayKey, keyToDate, meanMood, smoothPath, streak, toPixels } from '../line';
@@ -113,13 +113,13 @@ function Week({ entries }) {
 
 function Stat({ label, value, unit }) {
   return (
-    <View style={styles.stat}>
+    <Card style={styles.stat}>
       <Text style={styles.statLabel}>{label}</Text>
       <View style={styles.statRow}>
         <Text style={styles.statValue}>{value}</Text>
         <Text style={styles.statUnit}>{unit}</Text>
       </View>
-    </View>
+    </Card>
   );
 }
 
@@ -139,21 +139,26 @@ export default function AnalysisScreen({ entries, onLoadSample }) {
           {canSample && <GhostButton title="Load a sample week" onPress={onLoadSample} style={{ marginTop: 24 }} />}
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.head}>
             <Text style={[type.display, styles.center]}>Your lines</Text>
             <Text style={[type.bodySm, styles.center]}>Every evening, layered.</Text>
           </View>
 
-          <View style={styles.card}>
+          <Card style={styles.card}>
             <Text style={styles.cardTitle}>All evenings</Text>
             <Overlay entries={drawn} />
-          </View>
+          </Card>
 
-          <View style={styles.card}>
+          <Card style={styles.card}>
             <Text style={styles.cardTitle}>This week, end to end</Text>
             <Week entries={drawn} />
-          </View>
+          </Card>
 
           <View style={styles.stats}>
             <Stat label="Evenings" value={drawn.length} unit={drawn.length === 1 ? 'line' : 'lines'} />
