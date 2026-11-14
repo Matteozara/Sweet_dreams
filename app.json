@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Sweet Dreams",
+    "slug": "sweet-dreams",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Sweet Dreams uses the microphone so you can answer questions with your voice."
+      }
+    },
+    "android": {
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Sweet Dreams uses the microphone so you can answer questions with your voice."
+        }
+      ],
+      "expo-status-bar"
+    ]
+  }
+}
