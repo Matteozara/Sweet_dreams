@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Defs, Line, Path, Rect } from 'react-native-svg';
 import { Card, Header } from '../components/Chrome';
 import { GhostButton } from '../components/Buttons';
@@ -250,6 +250,21 @@ export default function AnalysisScreen({ entries, onLoadSample, onScoreEntries, 
   const activeDay = activeWeek
     ? activeWeek.days.find((d) => d.entry.id === selectedId) || activeWeek.days[activeWeek.days.length - 1]
     : null;
+
+  const exportJson = async () => {
+    const payload = JSON.stringify(entries, null, 2);
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const blob = new Blob([payload], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sweetdreams-entries-${dayKey()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+    await Share.share({ message: payload, title: 'sweetdreams-entries.json' }).catch(() => {});
+  };
 
   const confirmDelete = () => {
     Alert.alert(
@@ -564,6 +579,7 @@ export default function AnalysisScreen({ entries, onLoadSample, onScoreEntries, 
           </View>
 
           {canSample && <GhostButton title="Load sample weeks" onPress={onLoadSample} />}
+          <GhostButton title="Export data (JSON)" onPress={exportJson} />
           {onDeleteAll && <GhostButton title="Delete my data" onPress={confirmDelete} />}
         </ScrollView>
       )}

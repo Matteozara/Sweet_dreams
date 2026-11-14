@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sweet Dreams — Specialist View</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="nebula-backdrop" aria-hidden="true"></div>
+  <span class="star" style="left:7%;top:14%;width:3px;height:3px;animation-delay:0s" aria-hidden="true"></span>
+  <span class="star" style="left:88%;top:11%;width:4px;height:4px;animation-delay:0.9s" aria-hidden="true"></span>
+  <span class="star" style="left:93%;top:58%;width:3px;height:3px;animation-delay:1.7s" aria-hidden="true"></span>
+  <span class="star" style="left:4%;top:72%;width:3px;height:3px;animation-delay:0.5s" aria-hidden="true"></span>
+  <span class="star" style="left:46%;top:9%;width:2px;height:2px;animation-delay:1.3s" aria-hidden="true"></span>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="moon-orb" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="#ebdcff" stroke="#ebdcff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </div>
+      <div class="brand-text">
+        <span class="wordmark">Sweet Dreams</span>
+        <span class="eyebrow">Specialist View</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div id="timeframeGroup" class="timeframe-group" role="group" aria-label="Choose timeframe in days">
+        <button type="button" class="tf-btn" data-days="3">3d</button>
+        <button type="button" class="tf-btn" data-days="7">7d</button>
+        <button type="button" class="tf-btn" data-days="14">14d</button>
+        <button type="button" class="tf-btn active" data-days="21">21d</button>
+      </div>
+      <select id="weekSelect" class="select" aria-label="Filter by calendar week"></select>
+      <label class="btn" for="fileInput" title="Import exported sweetdreams-entries.json (or drag & drop anywhere)">Import JSON</label>
+      <input id="fileInput" type="file" accept="application/json,.json" hidden />
+      <button id="demoBtn" class="btn btn-primary" type="button">Load Recovery Demo</button>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="hero-header">
+      <div>
+        <div class="eyebrow">Evening Reflections &amp; Motor Telemetry</div>
+        <h1 class="display-title">Clinical Trajectory</h1>
+      </div>
+      <span id="baselineBadge" class="pill pill-info">Pre-baseline</span>
+    </div>
+
+    <section id="statusBanner" class="status-banner" aria-live="polite">
+      <div class="status-left">
+        <span class="status-dot"></span>
+        <div>
+          <h2 id="statusHeadline" class="status-headline">Loading evenings…</h2>
+          <p id="statusDetail" class="status-detail"></p>
+        </div>
+      </div>
+      <span class="pill">Tap any evening on a chart to inspect · Drop JSON anywhere</span>
+    </section>
+
+    <section class="kpi-grid">
+      <article class="card">
+        <div class="card-head">
+          <h2 class="card-title">Motor Behavior (Objective)</h2>
+          <span id="kpiObjPill" class="pill pill-info">0–10</span>
+        </div>
+        <div><span id="kpiObjective" class="kpi-val">—</span><span class="kpi-unit">/ 10</span></div>
+        <div class="gauge">
+          <div class="gauge-band" title="Normal range: 4.0–6.0 (±1 SD)"></div>
+          <div class="gauge-center" title="Personal baseline (5.0)"></div>
+          <div id="kpiObjDot" class="gauge-dot"></div>
+        </div>
+        <div class="gauge-labels"><span>0 Slowed</span><span>4–6 Normal</span><span>10 Fast</span></div>
+      </article>
+
+      <article class="card">
+        <div class="card-head">
+          <h2 class="card-title">Perceived Mood (Day Line)</h2>
+          <span id="kpiSubPill" class="pill">Gemini</span>
+        </div>
+        <div><span id="kpiSubjective" class="kpi-val">—</span><span class="kpi-unit">/ 10</span></div>
+        <div class="gauge" style="background: linear-gradient(90deg, rgba(241,181,215,0.28), rgba(212,187,255,0.2), rgba(205,229,255,0.28));">
+          <div class="gauge-center"></div>
+          <div id="kpiSubDot" class="gauge-dot"></div>
+        </div>
+        <div class="gauge-labels"><span>0 Heavy</span><span>5 Neutral</span><span>10 Light</span></div>
+      </article>
+
+      <article class="card">
+        <div class="card-head">
+          <h2 class="card-title">Mood vs. Motor Gap</h2>
+          <span id="kpiDivPill" class="pill">Alignment</span>
+        </div>
+        <div><span id="kpiDivergence" class="kpi-val">—</span><span class="kpi-unit">pts</span></div>
+        <div class="gauge">
+          <div class="gauge-band" style="left:35%;width:30%;" title="Aligned within ±1.5 pts"></div>
+          <div class="gauge-center"></div>
+          <div id="kpiDivDot" class="gauge-dot"></div>
+        </div>
+        <div class="gauge-labels"><span>−5 Mood worse</span><span>0 Aligned</span><span>+5 Motor slower</span></div>
+      </article>
+
+      <article class="card">
+        <div class="card-head">
+          <h2 class="card-title">Recorded Evenings &amp; Quality</h2>
+          <span id="kpiQcPill" class="pill">QC</span>
+        </div>
+        <div><span id="kpiQuality" class="kpi-val">0</span><span class="kpi-unit">evenings</span></div>
+        <div class="qc-bar" aria-label="Session quality breakdown">
+          <div id="qcValid" class="qc-seg" style="background:var(--blue);width:0%"></div>
+          <div id="qcLow" class="qc-seg" style="background:var(--lilac);width:0%"></div>
+          <div id="qcRej" class="qc-seg" style="background:var(--pink);width:0%"></div>
+        </div>
+        <div id="kpiQualitySub" class="gauge-labels"><span>Valid</span><span>Low-conf</span><span>Rejected</span></div>
+      </article>
+    </section>
+
+    <section class="grid-2">
+      <article class="card">
+        <div class="card-head">
+          <h2 class="section-title">Motor Behavior vs. Perceived Mood Over Time</h2>
+          <div class="legend">
+            <span class="legend-item"><span class="swatch" style="background:#cde5ff;box-shadow:0 0 8px rgba(205,229,255,0.6)"></span>Motor (Objective)</span>
+            <span class="legend-item"><span class="swatch" style="background:#f1b5d7;box-shadow:0 0 8px rgba(241,181,215,0.6)"></span>Mood (Subjective)</span>
+            <span class="legend-item"><span class="swatch" style="background:rgba(212,187,255,0.32);border-radius:2px"></span>Normal (4–6)</span>
+          </div>
+        </div>
+        <div id="dualChart" class="chart-box"></div>
+      </article>
+
+      <article class="card">
+        <div class="card-head">
+          <h2 class="section-title">Clinical Profile vs. Personal Baseline</h2>
+          <span class="pill">Shaded = Normal (±1 SD)</span>
+        </div>
+        <div id="domainBars" class="domain-bars"></div>
+        <div class="gauge-labels" style="padding: 0 4px;">
+          <span style="color:var(--pink)">← −3 SD (Slower / Heavier)</span>
+          <span>0 Baseline</span>
+          <span style="color:var(--blue)">+3 SD (Faster / Lighter) →</span>
+        </div>
+      </article>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2 class="section-title">Daily Feature Scorecard</h2>
+        <div class="scale-legend">
+          <span style="color:var(--pink)">Slower / Heavier (−3 SD)</span>
+          <div class="scale-bar"></div>
+          <span style="color:var(--blue)">Faster / Lighter (+3 SD)</span>
+        </div>
+      </div>
+      <div id="heatmapChart" class="chart-box"></div>
+    </section>
+
+    <section class="grid-3">
+      <article class="card">
+        <div class="card-head">
+          <h2 class="card-title">Hand Speed · Day Line</h2>
+          <span id="drawDelta" class="pill">mm/s</span>
+        </div>
+        <div id="drawHero" class="mod-hero">
+          <span class="mod-num">—</span><span class="mod-unit">mm/s latest · higher = faster</span>
+        </div>
+        <div id="drawChart" class="chart-box"></div>
+      </article>
+
+      <article class="card">
+        <div class="card-head">
+          <h2 class="card-title">Keystroke Pace · Typing</h2>
+          <span id="typingDelta" class="pill">ms</span>
+        </div>
+        <div id="typingHero" class="mod-hero">
+          <span class="mod-num">—</span><span class="mod-unit">ms delay · lower = faster</span>
+        </div>
+        <div id="typingChart" class="chart-box"></div>
+      </article>
+
+      <article class="card">
+        <div class="card-head">
+          <h2 class="card-title">Speech Fluency · Voice</h2>
+          <span id="voiceDelta" class="pill">%</span>
+        </div>
+        <div id="voiceHero" class="mod-hero">
+          <span class="mod-num">—</span><span class="mod-unit">% silent · lower = more fluent</span>
+        </div>
+        <div id="voiceChart" class="chart-box"></div>
+      </article>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2 class="section-title">Evening Line &amp; Telemetry Inspector</h2>
+        <span id="selectedDayBadge" class="pill pill-info">Select an evening</span>
+      </div>
+      <div id="dayChips" class="day-list"></div>
+      <div class="inspector-grid">
+        <div class="chart-box">
+          <div id="dayLineSvg"></div>
+          <p id="inspectorRationale" style="margin:10px 4px 2px;font-size:13px;line-height:1.5;color:var(--muted);"></p>
+        </div>
+        <table class="kv-table">
+          <tbody id="inspectorTable"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div id="tooltip" class="tooltip"></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

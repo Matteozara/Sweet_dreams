@@ -1,0 +1,758 @@
+/* Sweet Dreams — "Pastel Galaxy" Design System (matches src/theme.js & src/components/*) */
+
+:root {
+  --bg: #13121f;
+  --lowest: #0e0d1a;
+  --low: #1b1a27;
+  --container: #1f1e2c;
+  --high: #2a2836;
+  --highest: #353342;
+
+  --text: #e4e0f3;
+  --muted: #cbc4d0;
+  --faint: rgba(203, 196, 208, 0.6);
+  --outline: #958e9a;
+
+  --lilac: #d4bbff;
+  --lilac-pale: #ebdcff;
+  --pink: #f1b5d7;
+  --rose-strong: #f497c0;
+  --blue: #cde5ff;
+  --blue-dim: #aacaea;
+  --ink: #240d48;
+
+  --hairline: rgba(255, 255, 255, 0.08);
+  --glass: rgba(31, 30, 44, 0.62);
+  --glass-strong: rgba(36, 33, 55, 0.82);
+  --plot-bg: rgba(14, 13, 26, 0.7);
+  --plot-border: rgba(255, 255, 255, 0.06);
+
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+  --radius-full: 999px;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-weight: 400;
+  background-color: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Soft Pastel Galaxy Nebula Washes (matches src/components/Backdrop.js) */
+.nebula-backdrop {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 10% 8%, rgba(212, 187, 255, 0.26) 0%, rgba(212, 187, 255, 0) 52%),
+    radial-gradient(circle at 96% 42%, rgba(241, 181, 215, 0.19) 0%, rgba(241, 181, 215, 0) 48%),
+    radial-gradient(circle at 28% 95%, rgba(170, 202, 234, 0.21) 0%, rgba(170, 202, 234, 0) 50%);
+}
+
+.star {
+  position: fixed;
+  border-radius: 50%;
+  background: var(--blue);
+  pointer-events: none;
+  z-index: 0;
+  animation: twinkle 3.2s ease-in-out infinite;
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0.16; transform: scale(0.9); }
+  50% { opacity: 0.82; transform: scale(1.1); }
+}
+
+@keyframes moonBreath {
+  0%, 100% { transform: scale(1) rotate(-4deg); box-shadow: 0 0 18px rgba(212, 187, 255, 0.28); }
+  50% { transform: scale(1.04) rotate(4deg); box-shadow: 0 0 26px rgba(212, 187, 255, 0.48); }
+}
+
+body.dragover::after {
+  content: 'Drop sweetdreams-entries.json anywhere to open';
+  position: fixed;
+  inset: 20px;
+  z-index: 90;
+  border: 1.5px dashed var(--lilac);
+  border-radius: var(--radius-xl);
+  background: rgba(14, 13, 26, 0.86);
+  backdrop-filter: blur(18px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.2px;
+  color: var(--lilac-pale);
+  pointer-events: none;
+}
+
+/* Top Header Chrome (matches Chrome.js Header + GlassButton / PrimaryButton) */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 28px;
+  background: rgba(14, 13, 26, 0.62);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.moon-orb {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #25233a;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  animation: moonBreath 5.2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.wordmark {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--pink);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Segmented Timeframe Pill (3d / 7d / 14d / 21d) */
+.timeframe-group {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(14, 13, 26, 0.72);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-full);
+  padding: 3px;
+  gap: 2px;
+}
+
+.tf-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--faint);
+  padding: 6px 13px;
+  border-radius: var(--radius-full);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.12s var(--ease-out), background 0.18s, color 0.18s, box-shadow 0.18s;
+}
+
+.tf-btn:hover {
+  color: var(--text);
+}
+
+.tf-btn:active {
+  transform: scale(0.96);
+}
+
+.tf-btn.active {
+  background: linear-gradient(90deg, var(--lilac-pale) 0%, var(--lilac) 52%, var(--pink) 100%);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 0 16px rgba(212, 187, 255, 0.32);
+}
+
+/* Frosted GlassButton & Luminous PrimaryButton (matches src/components/Buttons.js) */
+.btn {
+  appearance: none;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(42, 40, 54, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.2px;
+  cursor: pointer;
+  transition: transform 0.12s var(--ease-out), background 0.18s, border-color 0.18s;
+}
+
+.btn:hover {
+  background: rgba(53, 51, 66, 0.78);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn-primary {
+  background: linear-gradient(90deg, var(--lilac-pale) 0%, var(--lilac) 50%, var(--pink) 100%);
+  color: var(--ink);
+  border: none;
+  font-weight: 600;
+  box-shadow: 0 0 24px rgba(212, 187, 255, 0.32);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(90deg, #f3e8ff 0%, #dcc6ff 50%, #f5c2df 100%);
+}
+
+select.select {
+  height: 38px;
+  background: rgba(42, 40, 54, 0.6);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-full);
+  padding: 0 15px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.1px;
+  cursor: pointer;
+}
+
+/* Badges (matches AnalysisScreen.js Badge tones) */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.pill-ok {
+  background: rgba(205, 229, 255, 0.15);
+  color: var(--blue);
+}
+
+.pill-warn {
+  background: rgba(241, 181, 215, 0.18);
+  color: var(--pink);
+}
+
+.pill-amber {
+  background: rgba(212, 187, 255, 0.16);
+  color: var(--lilac-pale);
+}
+
+.pill-info {
+  background: rgba(235, 220, 255, 0.12);
+  color: var(--lilac-pale);
+}
+
+/* Main Content Layout */
+.main {
+  position: relative;
+  z-index: 1;
+  max-width: 1340px;
+  margin: 0 auto;
+  padding: 22px 24px 52px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.hero-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 4px 2px;
+}
+
+.display-title {
+  margin: 4px 0 0;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.4px;
+  color: var(--text);
+}
+
+/* Top Clinical Status Card (Pastel Galaxy frosted panel) */
+.status-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(100deg, rgba(205, 229, 255, 0.11) 0%, var(--glass) 52%);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border: 1px solid rgba(205, 229, 255, 0.2);
+}
+
+.status-banner.warn {
+  background: linear-gradient(100deg, rgba(241, 181, 215, 0.15) 0%, var(--glass) 52%);
+  border-color: rgba(241, 181, 215, 0.28);
+}
+
+.status-banner.amber {
+  background: linear-gradient(100deg, rgba(212, 187, 255, 0.14) 0%, var(--glass) 52%);
+  border-color: rgba(212, 187, 255, 0.24);
+}
+
+.status-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--blue);
+  box-shadow: 0 0 14px rgba(205, 229, 255, 0.75);
+  flex-shrink: 0;
+}
+
+.status-banner.warn .status-dot {
+  background: var(--pink);
+  box-shadow: 0 0 14px rgba(241, 181, 215, 0.8);
+}
+
+.status-banner.amber .status-dot {
+  background: var(--lilac);
+  box-shadow: 0 0 14px rgba(212, 187, 255, 0.75);
+}
+
+.status-headline {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  color: var(--text);
+}
+
+.status-detail {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Frosted Cards & KPI Grid (matches AnalysisScreen.js Card & Stat) */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.card {
+  background: var(--glass);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.card-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  color: var(--faint);
+}
+
+.section-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  color: var(--text);
+}
+
+.kpi-val {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+  color: var(--text);
+}
+
+.kpi-unit {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--lilac-pale);
+  margin-left: 5px;
+}
+
+/* Pastel Galaxy Gauges */
+.gauge {
+  position: relative;
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: rgba(14, 13, 26, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  margin: 2px 0 1px;
+}
+
+.gauge-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 40%;
+  width: 20%;
+  background: rgba(212, 187, 255, 0.2);
+  border-left: 1px dashed rgba(235, 220, 255, 0.45);
+  border-right: 1px dashed rgba(235, 220, 255, 0.45);
+}
+
+.gauge-center {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 50%;
+  width: 1.5px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.gauge-dot {
+  position: absolute;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--blue);
+  border: 2px solid var(--lowest);
+  box-shadow: 0 0 10px rgba(235, 220, 255, 0.6);
+  display: none;
+}
+
+.gauge-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--faint);
+}
+
+.qc-bar {
+  display: flex;
+  height: 7px;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  background: rgba(14, 13, 26, 0.72);
+  margin: 2px 0 1px;
+}
+
+.qc-seg {
+  height: 100%;
+  transition: width 0.26s var(--ease-out);
+}
+
+/* Grids & Inner Plot Wells (matches AnalysisScreen.js styles.plot) */
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1.55fr 1fr;
+  gap: 16px;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.chart-box {
+  width: 100%;
+  background: var(--plot-bg);
+  border: 1px solid var(--plot-border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  overflow-x: auto;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+/* Diverging Clinical Profile Bars */
+.domain-bars {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+  padding: 14px 14px;
+  background: var(--plot-bg);
+  border: 1px solid var(--plot-border);
+  border-radius: var(--radius-md);
+  flex: 1;
+}
+
+.dom-row {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.dom-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
+}
+
+.dom-name {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.dom-val {
+  font-weight: 600;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dom-track {
+  position: relative;
+  height: 13px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+.dom-normal {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 33.33%;
+  width: 33.34%;
+  background: rgba(212, 187, 255, 0.09);
+  border-left: 1px dashed rgba(235, 220, 255, 0.22);
+  border-right: 1px dashed rgba(235, 220, 255, 0.22);
+}
+
+.dom-zero {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1.5px;
+  background: rgba(255, 255, 255, 0.42);
+  z-index: 2;
+}
+
+.dom-fill {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border-radius: var(--radius-full);
+  z-index: 1;
+  transition: width 0.26s var(--ease-out), left 0.26s var(--ease-out);
+}
+
+/* Modality Headline Value */
+.mod-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.mod-num {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.mod-unit {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--faint);
+}
+
+.scale-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.scale-bar {
+  width: 108px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, rgba(244, 151, 192, 0.9), rgba(212, 187, 255, 0.14) 50%, rgba(205, 229, 255, 0.95));
+}
+
+/* Inspector & Metric Rows (matches AnalysisScreen.js metricRow) */
+.inspector-grid {
+  display: grid;
+  grid-template-columns: 1.12fr 1fr;
+  gap: 16px;
+}
+
+.day-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.day-chip {
+  padding: 6px 11px;
+  border-radius: var(--radius-full);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--hairline);
+  background: rgba(14, 13, 26, 0.65);
+  color: var(--faint);
+  cursor: pointer;
+  transition: transform 0.12s var(--ease-out), background 0.16s, border-color 0.16s, color 0.16s;
+}
+
+.day-chip:hover {
+  color: var(--text);
+  border-color: rgba(212, 187, 255, 0.3);
+}
+
+.day-chip.active {
+  border-color: rgba(212, 187, 255, 0.55);
+  background: rgba(212, 187, 255, 0.18);
+  color: var(--lilac-pale);
+  font-weight: 600;
+  box-shadow: 0 0 12px rgba(212, 187, 255, 0.2);
+}
+
+.kv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.kv-table td {
+  padding: 8px 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.kv-table td:first-child {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.kv-table td:last-child {
+  text-align: right;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.tooltip {
+  position: fixed;
+  pointer-events: none;
+  z-index: 100;
+  background: rgba(14, 13, 26, 0.94);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(212, 187, 255, 0.3);
+  border-radius: 14px;
+  padding: 9px 13px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.48);
+  display: none;
+  max-width: 290px;
+}
+
+@media (max-width: 1024px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .grid-2,
+  .grid-3,
+  .inspector-grid {
+    grid-template-columns: 1fr;
+  }
+}
