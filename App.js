@@ -16,7 +16,7 @@ import ReflectionScreen from './src/screens/ReflectionScreen';
 import DayLineScreen from './src/screens/DayLineScreen';
 import RestScreen from './src/screens/RestScreen';
 import AnalysisScreen from './src/screens/AnalysisScreen';
-import { loadAll, sampleEntries, saveEntries, saveProfile, upsertEntry } from './src/storage';
+import { clearAllData, defaultProfile, loadAll, sampleEntries, saveEntries, saveProfile, upsertEntry } from './src/storage';
 import { sampleLocation, syncReminder } from './src/services';
 import { dayKey } from './src/line';
 import { colors } from './src/theme';
@@ -134,7 +134,18 @@ export default function App() {
   } else if (tab === 'analysis') {
     key = 'analysis';
     nav = true;
-    screen = <AnalysisScreen entries={entries} onLoadSample={() => updateEntries(sampleEntries(entries))} />;
+    screen = (
+      <AnalysisScreen
+        entries={entries}
+        onLoadSample={() => updateEntries(sampleEntries(entries))}
+        onDeleteAll={async () => {
+          await clearAllData();
+          setEntries([]);
+          setProfile(defaultProfile);
+          setTab('reflection');
+        }}
+      />
+    );
   } else if (tab === 'rest') {
     key = 'rest';
     nav = true;

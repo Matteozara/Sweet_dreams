@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { PixelRatio, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useAnimatedProps, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import Svg, { Circle, Defs, G, Line, Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -46,13 +46,15 @@ export default function DayLineScreen({ onSubmit, onBack }) {
   const insets = useSafeAreaInsets();
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [committed, setCommitted] = useState([]); // settled line, only on release
+  const [started, setStarted] = useState(false);
 
   const line = useSharedValue([]); // visible line: only moves forward in time
-  const raw = useSharedValue([]); // every touch sample [x, y, ms]
+  const raw = useSharedValue([]); // every touch sample [x, y, ms, strokeId]
   const width = useSharedValue(0);
   const height = useSharedValue(0);
   const attempts = useSharedValue(0);
   const startedAt = useSharedValue(0);
+  const strokeActive = useSharedValue(false);
 
   // The only React render the drawing causes: one, on release.
   const settle = (points) => setCommitted(points);
@@ -67,27 +69,66 @@ export default function DayLineScreen({ onSubmit, onBack }) {
           const w = width.get();
           const h = height.get();
           if (!w) return;
-          startedAt.set(Date.now());
-          attempts.set(attempts.get() + 1);
           const x = Math.max(0, Math.min(w, e.x));
           const y = Math.max(0, Math.min(h, e.y));
-          line.set([{ x, y, t: 0 }]);
-          raw.set([[x, y, 0]]);
+          const list = line.get();
+
+          // First stroke must begin at the left edge (Morning) so no part of the day is skipped.
+          const startZone = Math.min(56, w * 0.16);
+          if (list.length === 0 && x > startZone) {
+            strokeActive.set(false);
+            return;
+          }
+
+          strokeActive.set(true);
+          const now = Date.now();
+          if (startedAt.get() === 0) {
+            startedAt.set(now);
+            scheduleOnRN(setStarted, true);
+          }
+          const strokeId = attempts.get() + 1;
+          attempts.set(strokeId);
+          const t = now - startedAt.get();
+
+          raw.modify((arr) => {
+            'worklet';
+            if (arr.length < 3000) arr.push([x, y, t, strokeId]);
+            return arr;
+          });
+
+          const last = list[list.length - 1];
+          if (!last) {
+            // Anchor the visual start at x = 0 so the day line begins cleanly at the left edge.
+            line.modify((arr) => {
+              'worklet';
+              if (x > 0) arr.push({ x: 0, y, t });
+              arr.push({ x, y, t });
+              return arr;
+            });
+          } else if (x >= last.x + 2) {
+            line.modify((arr) => {
+              'worklet';
+              arr.push({ x, y, t });
+              return arr;
+            });
+          }
         })
         .onUpdate((e) => {
           'worklet';
+          if (!strokeActive.get()) return;
           const w = width.get();
           const h = height.get();
           if (!w) return;
           const x = Math.max(0, Math.min(w, e.x));
           const y = Math.max(0, Math.min(h, e.y));
           const t = Date.now() - startedAt.get();
+          const strokeId = attempts.get();
 
           // modify() mutates in place; copying these arrays every frame would
           // make a long drawing quadratic.
           raw.modify((arr) => {
             'worklet';
-            if (arr.length < 3000) arr.push([x, y, t]);
+            if (arr.length < 3000) arr.push([x, y, t, strokeId]);
             return arr;
           });
 
@@ -103,6 +144,8 @@ export default function DayLineScreen({ onSubmit, onBack }) {
         })
         .onEnd(() => {
           'worklet';
+          if (!strokeActive.get()) return;
+          strokeActive.set(false);
           scheduleOnRN(settle, line.get());
         }),
     []
@@ -114,7 +157,6 @@ export default function DayLineScreen({ onSubmit, onBack }) {
     const end = list[list.length - 1];
     return { cx: end ? end.x : -40, cy: end ? end.y : -40, opacity: list.length > 1 ? 1 : 0 };
   });
-  const hintStyle = useAnimatedStyle(() => ({ opacity: line.get().length === 0 ? 1 : 0 }));
   // An empty `d` does not draw nothing — react-native-svg paints the stroke
   // gradient across the whole box. So the line only exists once there is one.
   const lineProps = useAnimatedProps(() => ({ opacity: line.get().length > 1 ? 1 : 0 }));
@@ -129,22 +171,34 @@ export default function DayLineScreen({ onSubmit, onBack }) {
   const redraw = () => {
     line.set([]);
     raw.set([]);
+    attempts.set(0);
+    startedAt.set(0);
+    strokeActive.set(false);
+    setStarted(false);
     setCommitted([]);
   };
 
   const first = committed[0];
   const last = committed[committed.length - 1];
-  const complete = committed.length >= 6 && last.x - first.x > size.w * 0.25;
+  const complete = committed.length >= 6 && first.x <= Math.min(56, size.w * 0.16) && last.x >= size.w * 0.8;
 
   const close = () => {
     const { w, h } = size;
+    const rawArr = raw.get();
+    const totalMs = rawArr.length ? rawArr[rawArr.length - 1][2] : last.t;
     tap();
     onSubmit({
       points: thin(committed).map((p) => ({ x: p.x / w, y: p.y / h, t: p.t })),
-      motion: thin(raw.get(), 600).map(([x, y, t]) => [+(x / w).toFixed(4), +(y / h).toFixed(4), t]),
-      durationMs: last.t,
+      motion: thin(rawArr, 600).map(([x, y, t, strokeId]) => [+(x / w).toFixed(4), +(y / h).toFixed(4), t, strokeId]),
+      durationMs: totalMs,
       attempts: attempts.get(),
-      canvas: { w: Math.round(w), h: Math.round(h) },
+      fingerLifts: Math.max(0, attempts.get() - 1),
+      canvas: {
+        w: Math.round(w),
+        h: Math.round(h),
+        dpPerMm: +(160 / 25.4).toFixed(4),
+        pixelRatio: PixelRatio.get(),
+      },
     });
   };
 
@@ -236,9 +290,16 @@ export default function DayLineScreen({ onSubmit, onBack }) {
                   </AnimatedG>
                 </Svg>
               )}
-              <Animated.View style={[styles.hint, hintStyle]} pointerEvents="none">
-                <Text style={styles.hintText}>One line, left to right.</Text>
-              </Animated.View>
+              {!started && (
+                <>
+                  <View style={styles.startBand} pointerEvents="none">
+                    <View style={styles.startLine} />
+                  </View>
+                  <View style={styles.hint} pointerEvents="none">
+                    <Text style={styles.hintText}>Start at the red line, then draw to Night.</Text>
+                  </View>
+                </>
+              )}
             </View>
           </GestureDetector>
           <Text style={styles.axis}>− Heavy</Text>
@@ -286,7 +347,27 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.06)',
   },
-  hint: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingBottom: 48 },
-  hintText: { fontFamily: font.regular, fontSize: 14, color: colors.faint },
+  hint: { ...StyleSheet.absoluteFillObject, zIndex: 10, alignItems: 'center', justifyContent: 'center', paddingBottom: 48, paddingHorizontal: 24 },
+  startBand: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 24,
+    zIndex: 20,
+    elevation: 20,
+    backgroundColor: 'rgba(255, 59, 48, 0.18)',
+    justifyContent: 'center',
+  },
+  startLine: {
+    position: 'absolute',
+    left: 4,
+    top: 10,
+    bottom: 10,
+    width: 6,
+    borderRadius: 3,
+    backgroundColor: '#ff3b30',
+  },
+  hintText: { fontFamily: font.regular, fontSize: 14, lineHeight: 20, color: colors.faint, textAlign: 'center' },
   actions: { marginTop: 24, gap: 10 },
 });
