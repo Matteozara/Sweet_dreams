@@ -39,6 +39,15 @@ Scan the QR code with Expo Go (Android) or the Camera app (iOS). Phone and compu
 
 Every new terminal: `source .venv/bin/activate` before running `npx expo ...` by hand.
 
+## Live transcription
+
+While recording, the words appear under the waveform ("Hide words" turns the display off).
+Microphone audio is streamed to the Gemini Live API (`gemini-3.5-transcribe-live`) and the
+transcript is saved with the entry. After stopping, the transcript becomes a text field so it
+can be corrected; the original recognised text is kept alongside when it was edited. Copy `.env.example` to `.env`, set
+`EXPO_PUBLIC_GEMINI_API_KEY`, and restart with `./run.sh --clear`. Without a key the app
+records as before, with no transcript.
+
 ## Project structure
 
 ```
@@ -48,6 +57,7 @@ src/theme.js               design tokens (colours, type, radii)
 src/line.js                day-line maths, dates, formatting
 src/storage.js             AsyncStorage persistence + sample data
 src/services.js            reminder notification, location, haptics
+src/transcribe.js          live speech-to-text over the Gemini Live API
 src/components/            Backdrop, Buttons, Chrome (header, nav, toggle), Icon, LineArt, TimeSheet
 src/screens/               Welcome, Setup, Reflection, DayLine, Rest, Analysis
 setup_env.sh / run.sh      environment + launch scripts
@@ -55,7 +65,7 @@ setup_env.sh / run.sh      environment + launch scripts
 
 ## Libraries
 
-- `expo-audio`: microphone recording with live level metering
+- `expo-audio`: microphone PCM stream (WAV file, waveform, live transcription)
 - `react-native-svg`: the day line, charts, gradients and icons
 - `@react-native-async-storage/async-storage`: on-device storage
 - `expo-notifications`: the daily evening reminder

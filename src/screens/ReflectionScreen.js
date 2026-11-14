@@ -11,42 +11,129 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import {
-  RecordingPresets,
-  requestRecordingPermissionsAsync,
-  setAudioModeAsync,
-  useAudioRecorder,
-  useAudioRecorderState,
-} from 'expo-audio';
+import { requestRecordingPermissionsAsync, setAudioModeAsync, useAudioStream } from 'expo-audio';
 import { Header } from '../components/Chrome';
 import { GlassButton, PrimaryButton } from '../components/Buttons';
 import Icon from '../components/Icon';
 import { formatDuration } from '../line';
 import { tap } from '../services';
+import { createTranscriber, transcriptionAvailable } from '../transcribe';
 import { colors, font, radius, type } from '../theme';
 
 const BARS = 26;
 const IDLE = [0.2, 0.3, 0.5, 0.8, 1, 0.65, 0.75, 0.4, 0.25];
 const barColors = [colors.blue, colors.lilac, colors.lilacPale, colors.pink];
 
-function Waveform({ levels, live }) {
-  const shown = levels.length ? levels.slice(-BARS) : IDLE;
+/**
+ * Waveform and timer. They update themselves through `feed` so that the ten
+ * updates a second while recording never re-render the rest of the screen:
+ * a slow render there would back up the microphone buffers and delay the words.
+ */
+function Meter({ feed, recording, idleStatus }) {
+  const [levels, setLevels] = useState([]);
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    feed.current = {
+      push: (level, ms) => {
+        setLevels((l) => [...l.slice(-(BARS - 1)), level]);
+        setElapsed(ms);
+      },
+      reset: () => {
+        setLevels([]);
+        setElapsed(0);
+      },
+    };
+    return () => {
+      feed.current = null;
+    };
+  }, []);
+  const shown = levels.length ? levels : IDLE;
   return (
-    <View style={styles.wave} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      {shown.map((v, i) => (
-        <View
-          key={i}
-          style={[
-            styles.bar,
-            {
-              height: 4 + v * 28,
-              backgroundColor: barColors[i % barColors.length],
-              opacity: levels.length ? (live ? 0.95 : 0.75) : 0.35,
-            },
-          ]}
-        />
-      ))}
+    <View style={styles.waveWrap}>
+      <View style={styles.wave} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        {shown.map((v, i) => (
+          <View
+            key={i}
+            style={[
+              styles.bar,
+              {
+                height: 4 + v * 28,
+                backgroundColor: barColors[i % barColors.length],
+                opacity: levels.length ? (recording ? 0.95 : 0.75) : 0.35,
+              },
+            ]}
+          />
+        ))}
+      </View>
+      <Text style={styles.status}>{recording ? formatDuration(elapsed) : idleStatus}</Text>
     </View>
+  );
+}
+
+/**
+ * The live transcript. Also self-updating, for the same reason as the meter.
+ * Once recording has stopped it turns into a text field, so mistakes can be corrected.
+ */
+function Words({ feed, recording, visible, debug, editable, onEdit }) {
+  const [words, setWords] = useState({ final: '', interim: '' });
+  const [info, setInfo] = useState('');
+  const scroll = useRef(null);
+  useEffect(() => {
+    feed.current = setWords;
+    return () => {
+      feed.current = null;
+    };
+  }, []);
+  // Development read-out: where the time goes between the microphone and the words.
+  useEffect(() => {
+    if (!__DEV__ || !recording) return;
+    const id = setInterval(() => setInfo(debug()), 1000);
+    return () => clearInterval(id);
+  }, [recording]);
+
+  const has = !!(words.final || words.interim);
+  if (!visible || !(recording || has || editable)) return null;
+  if (editable) {
+    return (
+      <TextInput
+        style={styles.wordsInput}
+        multiline
+        scrollEnabled
+        value={[words.final, words.interim].filter(Boolean).join(' ')}
+        onChangeText={(value) => {
+          setWords({ final: value, interim: '' });
+          onEdit(value);
+        }}
+        placeholder="Add your words."
+        placeholderTextColor={colors.faint}
+        selectionColor={colors.lilac}
+        textAlignVertical="top"
+        accessibilityLabel="What you said. Edit to correct it."
+      />
+    );
+  }
+  return (
+    <>
+      <ScrollView
+        ref={scroll}
+        style={styles.words}
+        nestedScrollEnabled
+        showsVerticalScrollIndicator={false}
+        onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}
+        accessibilityLiveRegion="polite"
+      >
+        {has ? (
+          <Text style={styles.wordsText}>
+            {words.final}
+            {words.final && words.interim ? ' ' : ''}
+            <Text style={styles.wordsInterim}>{words.interim}</Text>
+          </Text>
+        ) : (
+          <Text style={[styles.wordsText, styles.wordsInterim]}>Listening…</Text>
+        )}
+      </ScrollView>
+      {__DEV__ && !!info && <Text style={styles.debug}>{info}</Text>}
+    </>
   );
 }
 
@@ -55,11 +142,53 @@ export default function ReflectionScreen({ onSubmit }) {
   const [mode, setMode] = useState('voice'); // 'voice' | 'text'
   const [text, setText] = useState('');
   const [audio, setAudio] = useState(null); // { uri, durationMs }
-  const [levels, setLevels] = useState([]);
 
-  const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true });
-  const rec = useAudioRecorderState(recorder, 100);
-  const recording = rec.isRecording;
+  const [recording, setRecording] = useState(false);
+  const [showWords, setShowWords] = useState(true);
+  const [finishing, setFinishing] = useState(false);
+
+  const live = useRef(false);
+  const lastTick = useRef(0);
+  const transcriber = useRef(null);
+  const meter = useRef(null); // Meter's feed
+  const wordsFeed = useRef(null); // Words' feed
+  const words = useRef({ final: '', interim: '' }); // latest transcript, for submit
+  const heard = useRef(''); // the transcript as recognised, before any correction
+  const clock = useRef({ startedAt: 0, audioMs: 0 });
+  const onWords = (w) => {
+    words.current = w;
+    wordsFeed.current?.(w);
+  };
+  const debug = () => {
+    const s = transcriber.current?.stats();
+    if (!s) return '';
+    const sec = (ms) => (ms == null ? '–' : (ms / 1000).toFixed(1) + 's');
+    // lag: how far the audio we have handled is behind the wall clock.
+    const lag = Date.now() - clock.current.startedAt - clock.current.audioMs;
+    return `link ${sec(s.readyMs)} · lag ${sec(lag)} · sent ${s.sent} · queued ${s.queued} · in ${s.received}${s.closed ? ' · closed' : ''}`;
+  };
+
+  // Raw microphone audio: written to a WAV file, metered for the waveform,
+  // and streamed to the transcriber, all from the same buffers.
+  const onBuffer = (buffer) => {
+    if (!live.current) return;
+    let samples = new Int16Array(buffer.data);
+    if (buffer.channels > 1) samples = samples.filter((_, i) => i % buffer.channels === 0);
+    transcriber.current?.send({ data: samples.buffer, sampleRate: buffer.sampleRate });
+
+    const ms = buffer.timestamp * 1000;
+    clock.current.audioMs = ms + (samples.length / buffer.sampleRate) * 1000;
+    if (ms - lastTick.current < 120) return;
+    lastTick.current = ms;
+    let sum = 0;
+    for (let i = 0; i < samples.length; i += 4) sum += samples[i] * samples[i];
+    const rms = Math.sqrt(sum / Math.max(1, samples.length / 4)) / 32768;
+    const db = 20 * Math.log10(rms || 1e-6);
+    meter.current?.push(Math.min(1, Math.max(0.05, (db + 55) / 55)), ms);
+  };
+  const { stream } = useAudioStream({ sampleRate: 16000, channels: 1, encoding: 'int16', onBuffer });
+
+  useEffect(() => () => transcriber.current?.close(), []);
 
   // Typing dynamics, kept alongside the text for later analysis.
   const typing = useRef({ startedAt: null, events: [], deletions: 0, last: 0 });
@@ -78,17 +207,6 @@ export default function ReflectionScreen({ onSubmit }) {
     return () => loop.stop();
   }, [recording]);
 
-  // Feed the waveform from the microphone level while recording.
-  useEffect(() => {
-    if (!recording) return;
-    const db = rec.metering;
-    const level =
-      typeof db === 'number'
-        ? Math.min(1, Math.max(0.05, (db + 55) / 55))
-        : 0.25 + 0.45 * Math.abs(Math.sin(rec.durationMillis / 170));
-    setLevels((l) => [...l.slice(-(BARS - 1)), level]);
-  }, [rec.durationMillis]);
-
   const start = async () => {
     try {
       const perm = await requestRecordingPermissionsAsync();
@@ -98,24 +216,41 @@ export default function ReflectionScreen({ onSubmit }) {
       }
       await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
       setAudio(null);
-      setLevels([]);
-      await recorder.prepareToRecordAsync();
-      recorder.record();
+      meter.current?.reset();
+      onWords({ final: '', interim: '' });
+      lastTick.current = 0;
+      transcriber.current?.close();
+      transcriber.current = createTranscriber({ onText: onWords });
+      await stream.start();
+      clock.current = { startedAt: Date.now(), audioMs: 0 };
+      // Not available on web: there we keep the transcript only.
+      await stream.startFileRecordingAsync().catch(() => {});
+      live.current = true;
+      setRecording(true);
       tap();
     } catch (e) {
+      transcriber.current?.close();
       Alert.alert('Recording is unavailable', 'You can type instead.');
     }
   };
 
   const stop = async () => {
+    live.current = false;
+    setRecording(false);
+    setFinishing(true);
     try {
-      const durationMs = rec.durationMillis;
-      await recorder.stop();
-      await setAudioModeAsync({ allowsRecording: false });
-      setAudio({ uri: recorder.uri, durationMs });
+      const file = await stream.stopFileRecordingAsync().catch(() => null);
+      stream.stop();
+      await setAudioModeAsync({ allowsRecording: false }).catch(() => {});
+      setAudio({ uri: file?.uri ?? null, durationMs: file ? Math.round(file.duration * 1000) : Math.round(clock.current.audioMs) });
       tap();
+      // Give the last words a moment to arrive before the answer can be submitted.
+      await transcriber.current?.finish();
+      heard.current = [words.current.final, words.current.interim].filter(Boolean).join(' ').trim();
     } catch (e) {
       Alert.alert('Could not save the recording', 'Please try again, or type instead.');
+    } finally {
+      setFinishing(false);
     }
   };
 
@@ -129,7 +264,7 @@ export default function ReflectionScreen({ onSubmit }) {
     setText(value);
   };
 
-  const canContinue = mode === 'text' ? text.trim().length > 0 : !!audio && !recording;
+  const canContinue = mode === 'text' ? text.trim().length > 0 : !!audio && !recording && !finishing;
 
   const submit = () => {
     if (mode === 'text') {
@@ -145,15 +280,19 @@ export default function ReflectionScreen({ onSubmit }) {
         },
       });
     } else {
-      onSubmit({ type: 'audio', uri: audio.uri, durationMs: audio.durationMs });
+      const transcript = [words.current.final, words.current.interim].filter(Boolean).join(' ').trim();
+      onSubmit({
+        type: 'audio',
+        uri: audio.uri,
+        durationMs: audio.durationMs,
+        transcript,
+        // Kept only when the user corrected the text: what recognition originally heard.
+        ...(transcript !== heard.current && { transcriptHeard: heard.current }),
+      });
     }
   };
 
-  const status = recording
-    ? formatDuration(rec.durationMillis)
-    : audio
-    ? `${formatDuration(audio.durationMs)} recorded`
-    : 'Tap to speak';
+  const idleStatus = audio ? `${formatDuration(audio.durationMs)} recorded` : 'Tap to speak';
 
   return (
     <View style={styles.screen}>
@@ -199,18 +338,34 @@ export default function ReflectionScreen({ onSubmit }) {
                       <Icon name={recording ? 'stop' : 'mic'} size={recording ? 30 : 32} color={colors.lilacPale} />
                     </Pressable>
                   </View>
-                  <View style={styles.waveWrap}>
-                    <Waveform levels={levels} live={recording} />
-                    <Text style={styles.status}>{status}</Text>
+                  <Meter feed={meter} recording={recording} idleStatus={idleStatus} />
+                  {transcriptionAvailable && (
+                    <Words
+                      feed={wordsFeed}
+                      recording={recording}
+                      visible={showWords}
+                      debug={debug}
+                      editable={!!audio && !recording && !finishing}
+                      onEdit={(value) => (words.current = { final: value, interim: '' })}
+                    />
+                  )}
+                  <View style={styles.pills}>
+                    <GlassButton
+                      small
+                      title="Type instead"
+                      disabled={recording}
+                      onPress={() => setMode('text')}
+                      icon={<Icon name="keyboard" size={16} color={colors.lilac} />}
+                      style={recording && { opacity: 0.4 }}
+                    />
+                    {transcriptionAvailable && (
+                      <GlassButton
+                        small
+                        title={showWords ? 'Hide words' : 'Show words'}
+                        onPress={() => setShowWords((v) => !v)}
+                      />
+                    )}
                   </View>
-                  <GlassButton
-                    small
-                    title="Type instead"
-                    disabled={recording}
-                    onPress={() => setMode('text')}
-                    icon={<Icon name="keyboard" size={16} color={colors.lilac} />}
-                    style={recording && { opacity: 0.4 }}
-                  />
                 </>
               ) : (
                 <>
@@ -284,6 +439,27 @@ const styles = StyleSheet.create({
   waveWrap: { alignItems: 'center', gap: 10 },
   wave: { height: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   bar: { width: 4, borderRadius: 2 },
+  words: { alignSelf: 'stretch', maxHeight: 132, flexGrow: 0 },
+  wordsText: { fontFamily: font.regular, fontSize: 16, lineHeight: 26, color: colors.text, textAlign: 'center' },
+  wordsInput: {
+    alignSelf: 'stretch',
+    maxHeight: 156,
+    minHeight: 52,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.hairline,
+    backgroundColor: 'rgba(14,13,26,0.45)',
+    fontFamily: font.regular,
+    fontSize: 16,
+    lineHeight: 26,
+    color: colors.text,
+    ...Platform.select({ web: { outlineStyle: 'none' }, default: {} }),
+  },
+  wordsInterim: { color: colors.faint },
+  debug: { fontFamily: font.regular, fontSize: 10, color: colors.faint, textAlign: 'center', marginTop: -16 },
+  pills: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8 },
   status: { fontFamily: font.medium, fontSize: 12, letterSpacing: 0.3, color: colors.muted, fontVariant: ['tabular-nums'] },
 
   input: {
