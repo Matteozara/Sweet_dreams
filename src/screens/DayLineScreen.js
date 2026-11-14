@@ -34,7 +34,7 @@ function smoothPathWorklet(pts) {
 
 /**
  * Step two: one line across the day.
- * Left to right is morning to night; top is light, bottom is heavy.
+ * Left to right is morning to night; top is good, bottom is bad.
  *
  * The finger is on the element, so the line lives on the UI thread: the pan
  * gesture writes into shared values and `useAnimatedProps` hands the SVG its
@@ -42,7 +42,7 @@ function smoothPathWorklet(pts) {
  * Besides the visible line we keep the raw finger motion (every sample, with
  * timing), which is the part worth analysing later.
  */
-export default function DayLineScreen({ onSubmit, onBack }) {
+export default function DayLineScreen({ onSubmit, onBack, onSettings }) {
   const insets = useSafeAreaInsets();
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [committed, setCommitted] = useState([]); // settled line, only on release
@@ -176,6 +176,7 @@ export default function DayLineScreen({ onSubmit, onBack }) {
     strokeActive.set(false);
     setStarted(false);
     setCommitted([]);
+    setTouched(false);
   };
 
   const first = committed[0];
@@ -204,13 +205,13 @@ export default function DayLineScreen({ onSubmit, onBack }) {
 
   return (
     <View style={[styles.screen, { paddingBottom: insets.bottom + 12 }]}>
-      <Header chip="The Day Line" onBack={onBack} />
+      <Header onBack={onBack} onSettings={onSettings} />
       <View style={styles.body}>
         <Text style={type.display}>Draw your day</Text>
         <Text style={styles.sub}>Morning to evening.</Text>
 
         <Card style={styles.card}>
-          <Text style={[styles.axis, { color: colors.pink }]}>+ Light</Text>
+          <Text style={[styles.axis, { color: colors.pink }]}>+ Good</Text>
           <GestureDetector gesture={pan}>
             <View style={styles.canvas} onLayout={onLayout}>
               {size.w > 0 && (
@@ -295,14 +296,14 @@ export default function DayLineScreen({ onSubmit, onBack }) {
                   <View style={styles.startBand} pointerEvents="none">
                     <View style={styles.startLine} />
                   </View>
-                  <View style={styles.hint} pointerEvents="none">
+                  <View style={[styles.hint, { width: size.w, height: size.h }]} pointerEvents="none">
                     <Text style={styles.hintText}>Start at the red line, then draw to Night.</Text>
                   </View>
                 </>
               )}
             </View>
           </GestureDetector>
-          <Text style={styles.axis}>− Heavy</Text>
+          <Text style={styles.axis}>− Bad</Text>
           <View style={styles.time}>
             <Text style={[styles.axis, { color: colors.pink }]}>Morning</Text>
             <Text style={[styles.axis, { color: colors.blue }]}>Night</Text>
@@ -347,7 +348,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.06)',
   },
-  hint: { ...StyleSheet.absoluteFillObject, zIndex: 10, alignItems: 'center', justifyContent: 'center', paddingBottom: 48, paddingHorizontal: 24 },
+  // Sized by the caller, never by absoluteFillObject alone: an overlay with
+  // no dimensions of its own does not paint its children here.
+  hint: { position: 'absolute', top: 0, left: 0, zIndex: 10, alignItems: 'center', justifyContent: 'center', paddingBottom: 48, paddingHorizontal: 24 },
   startBand: {
     position: 'absolute',
     left: 0,

@@ -138,7 +138,7 @@ function Words({ feed, recording, visible, debug, editable, onEdit }) {
 }
 
 /** Step one: "How was your day?" answered by voice, or by keyboard. */
-export default function ReflectionScreen({ onSubmit }) {
+export default function ReflectionScreen({ onSubmit, onSettings }) {
   const [mode, setMode] = useState('voice'); // 'voice' | 'text'
   const [text, setText] = useState('');
   const [audio, setAudio] = useState(null); // { uri, durationMs }
@@ -319,7 +319,7 @@ export default function ReflectionScreen({ onSubmit }) {
 
   return (
     <View style={styles.screen}>
-      <Header chip="Evening Reflection" />
+      <Header onSettings={onSettings} />
         {/* automaticallyAdjustKeyboardInsets uses the real keyboard frame, which
             KeyboardAvoidingView cannot do from inside a nested layout. */}
         <ScrollView

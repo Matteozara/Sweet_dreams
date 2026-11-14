@@ -161,7 +161,7 @@ function MetricRow({ label, value, z }) {
   );
 }
 
-export default function AnalysisScreen({ entries, onLoadSample, onDeleteAll }) {
+export default function AnalysisScreen({ entries, onLoadSample, onDeleteAll, onSettings }) {
   const drawn = useMemo(() => entries.filter((e) => e.line?.points?.length > 1), [entries]);
   const run = streak(drawn);
   const canSample = __DEV__ && onLoadSample && !entries.some((e) => e.sample);
@@ -189,7 +189,7 @@ export default function AnalysisScreen({ entries, onLoadSample, onDeleteAll }) {
 
   return (
     <View style={styles.screen}>
-      <Header chip="Analysis" />
+      <Header onSettings={onSettings} />
       {drawn.length === 0 ? (
         <View style={styles.empty}>
           <Text style={[type.display, styles.center]}>Your lines</Text>

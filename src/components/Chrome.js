@@ -23,8 +23,8 @@ export function Card({ children, style, intensity = 22 }) {
   return <View style={flat}>{children}</View>;
 }
 
-/** Top bar: wordmark on the left, a quiet chip naming the screen on the right. */
-export function Header({ chip, onBack }) {
+/** Top bar: wordmark on the left, a small settings gear on the right. */
+export function Header({ onBack, onSettings }) {
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
@@ -36,10 +36,10 @@ export function Header({ chip, onBack }) {
         )}
         <Text style={styles.wordmark}>Sweet Dreams</Text>
       </View>
-      {chip && (
-        <View style={styles.chip}>
-          <Text style={styles.chipText}>{chip}</Text>
-        </View>
+      {onSettings && (
+        <Press onPress={onSettings} hitSlop={16} scaleTo={0.88} accessibilityLabel="Settings">
+          <Icon name="gear" size={17} color={colors.faint} strokeWidth={1.5} />
+        </Press>
       )}
     </View>
   );
@@ -145,8 +145,6 @@ const styles = StyleSheet.create({
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   wordmark: { fontFamily: font.medium, fontSize: 14, letterSpacing: 0.3, color: 'rgba(255,255,255,0.9)' },
-  chip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full, backgroundColor: 'rgba(255,255,255,0.1)' },
-  chipText: { fontFamily: font.medium, fontSize: 12, color: 'rgba(255,255,255,0.7)' },
 
   nav: {
     borderTopWidth: 1,
@@ -170,6 +168,8 @@ const styles = StyleSheet.create({
   navLabelOn: { fontFamily: font.semibold, color: colors.lilacPale },
 
   track: { width: 50, height: 30, borderRadius: 15, padding: 2, backgroundColor: 'rgba(53,51,66,0.9)', justifyContent: 'center' },
-  trackOn: { ...StyleSheet.absoluteFillObject, borderRadius: 15, overflow: 'hidden' },
+  // Explicit size, not absoluteFill: an absolutely positioned overlay with no
+  // dimensions of its own does not paint its children here.
+  trackOn: { position: 'absolute', top: 0, left: 0, width: 50, height: 30, borderRadius: 15, overflow: 'hidden' },
   thumb: { width: 26, height: 26, borderRadius: 13 },
 });

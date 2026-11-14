@@ -1,5 +1,5 @@
 // Helpers for day lines. A stored line is a list of points
-// { x: 0..1 (morning -> night), y: 0..1 (0 = top = light, 1 = bottom = heavy), t: ms since touch down }.
+// { x: 0..1 (morning -> night), y: 0..1 (0 = top = good, 1 = bottom = bad), t: ms since touch down }.
 
 const f = (n) => Math.round(n * 10) / 10;
 
@@ -28,7 +28,7 @@ export function thin(points, max = 160) {
   return Array.from({ length: max }, (_, i) => points[Math.round(i * step)]);
 }
 
-/** Average height of a line as a mood in -1 (heavy) .. 1 (light). */
+/** Average height of a line as a mood in -1 (bad) .. 1 (good). */
 export function meanMood(points) {
   if (!points?.length) return 0;
   const y = points.reduce((s, p) => s + p.y, 0) / points.length;

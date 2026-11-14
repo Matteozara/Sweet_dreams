@@ -10,7 +10,7 @@ import { PlusJakartaSans_600SemiBold } from '@expo-google-fonts/plus-jakarta-san
 
 import Backdrop from './src/components/Backdrop';
 import { BottomNav, FadeIn } from './src/components/Chrome';
-import WelcomeScreen from './src/screens/WelcomeScreen';
+import SplashScreen from './src/screens/SplashScreen';
 import SetupScreen from './src/screens/SetupScreen';
 import ReflectionScreen from './src/screens/ReflectionScreen';
 import DayLineScreen from './src/screens/DayLineScreen';
@@ -48,8 +48,9 @@ function useKeyboardOpen() {
 }
 
 /**
- * Flow: welcome -> setup -> (reflection -> day line -> rest) every evening.
- * Reflection, Rest and Analysis are peer tabs, as in the design.
+ * Splash on every launch, then setup once, then the evening itself:
+ * question -> day line -> rest. Analysis sits beside them in the bottom bar,
+ * and the header gear reopens setup to change permissions.
  */
 export default function App() {
   const [fontsLoaded, fontError] = useFonts({
@@ -57,22 +58,20 @@ export default function App() {
     PlusJakartaSans_500Medium,
     PlusJakartaSans_600SemiBold,
   });
+  const [splashDone, setSplashDone] = useState(false);
   const [profile, setProfile] = useState(null);
   const [entries, setEntries] = useState([]);
   const [tab, setTab] = useState('reflection');
   const [draft, setDraft] = useState(null); // tonight's answer, while the line is being drawn
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const keyboardOpen = useKeyboardOpen();
 
   useEffect(() => {
     loadAll().then((data) => {
       setEntries(data.entries);
       setProfile(data.profile);
-      // An evening that is already closed opens on Rest, not on the question.
-      if (data.entries.some((e) => e.date === dayKey())) setTab('rest');
     });
   }, []);
-
-  if (!profile || !(fontsLoaded || fontError)) return <View style={styles.root} />;
 
   const updateProfile = (patch) => {
     const next = { ...profile, ...patch };
@@ -91,6 +90,12 @@ export default function App() {
   const finishSetup = ({ movement, reminder }) => {
     updateProfile({ movement, reminder, onboarded: true });
     syncReminder(reminder);
+  };
+
+  const saveSettings = ({ movement, reminder }) => {
+    updateProfile({ movement, reminder });
+    syncReminder(reminder);
+    setSettingsOpen(false);
   };
 
   const closeDay = (line) => {
@@ -118,19 +123,35 @@ export default function App() {
     }
   };
 
+  const openSettings = () => setSettingsOpen(true);
+
   let screen;
   let key;
   let nav = false;
-  if (!profile.signedIn) {
-    key = 'welcome';
-    screen = <WelcomeScreen onSignIn={() => updateProfile({ signedIn: true })} />;
+  const ready = profile && (fontsLoaded || fontError);
+
+  if (!splashDone || !ready) {
+    key = 'splash';
+    screen = <SplashScreen onDone={() => setSplashDone(true)} />;
   } else if (!profile.onboarded) {
     key = 'setup';
     screen = <SetupScreen profile={profile} onDone={finishSetup} />;
+  } else if (settingsOpen) {
+    key = 'settings';
+    screen = (
+      <SetupScreen
+        editing
+        profile={profile}
+        onDone={saveSettings}
+        onBack={() => setSettingsOpen(false)}
+      />
+    );
   } else if (draft) {
     // The day line is pushed on top of Reflection, so the tabs step aside.
     key = 'line';
-    screen = <DayLineScreen onSubmit={closeDay} onBack={() => setDraft(null)} />;
+    screen = (
+      <DayLineScreen onSubmit={closeDay} onBack={() => setDraft(null)} onSettings={openSettings} />
+    );
   } else if (tab === 'analysis') {
     key = 'analysis';
     nav = true;
@@ -144,6 +165,7 @@ export default function App() {
           setProfile(defaultProfile);
           setTab('reflection');
         }}
+        onSettings={openSettings}
       />
     );
   } else if (tab === 'rest') {
@@ -154,13 +176,17 @@ export default function App() {
         entry={latest}
         onProgress={() => setTab('analysis')}
         onRedo={() => setTab('reflection')}
+        onSettings={openSettings}
       />
     );
   } else {
     key = 'reflection';
     nav = true;
     screen = (
-      <ReflectionScreen onSubmit={(answer) => setDraft({ answer, startedAt: new Date().toISOString() })} />
+      <ReflectionScreen
+        onSubmit={(answer) => setDraft({ answer, startedAt: new Date().toISOString() })}
+        onSettings={openSettings}
+      />
     );
   }
 

@@ -5,10 +5,12 @@ const PROFILE = 'sweetdreams.profile.v1';
 const ENTRIES = 'sweetdreams.entries.v1';
 
 export const defaultProfile = {
-  signedIn: false,
   onboarded: false,
   movement: false,
   reminder: { enabled: true, hour: 22, minute: 0 },
+  // Who this person is in care with. Set by the clinic, never from the app —
+  // placeholder values until there is a backend to read them from.
+  care: { therapist: 'Dr. M. Hendriks', clinic: 'Lindehof Clinic' },
 };
 
 async function read(key, fallback) {
