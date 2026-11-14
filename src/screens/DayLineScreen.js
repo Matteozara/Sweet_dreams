@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedProps, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import Svg, { Circle, Defs, Line, Path } from 'react-native-svg';
+import Svg, { Circle, Defs, G, Line, Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card, Header } from '../components/Chrome';
 import { GhostButton, PrimaryButton } from '../components/Buttons';
@@ -15,6 +15,7 @@ import { colors, font, radius, type } from '../theme';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const AnimatedG = Animated.createAnimatedComponent(G);
 
 /** The UI-thread twin of smoothPath() in src/line.js — keep the two in step. */
 function smoothPathWorklet(pts) {
@@ -114,6 +115,9 @@ export default function DayLineScreen({ onSubmit, onBack }) {
     return { cx: end ? end.x : -40, cy: end ? end.y : -40, opacity: list.length > 1 ? 1 : 0 };
   });
   const hintStyle = useAnimatedStyle(() => ({ opacity: line.get().length === 0 ? 1 : 0 }));
+  // An empty `d` does not draw nothing — react-native-svg paints the stroke
+  // gradient across the whole box. So the line only exists once there is one.
+  const lineProps = useAnimatedProps(() => ({ opacity: line.get().length > 1 ? 1 : 0 }));
 
   const onLayout = (e) => {
     const { width: w, height: h } = e.nativeEvent.layout;
@@ -170,35 +174,66 @@ export default function DayLineScreen({ onSubmit, onBack }) {
                     strokeDasharray="4 7"
                   />
                   {/* the glow layers of LineArt's GlowLine, driven from the UI thread */}
-                  <AnimatedPath
-                    animatedProps={pathProps}
-                    stroke={colors.lilac}
-                    strokeOpacity={0.14}
-                    strokeWidth={11.9}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    fill="none"
-                  />
-                  <AnimatedPath
-                    animatedProps={pathProps}
-                    stroke={colors.lilac}
-                    strokeOpacity={0.18}
-                    strokeWidth={7}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    fill="none"
-                  />
-                  <AnimatedPath
-                    animatedProps={pathProps}
-                    stroke="url(#line)"
-                    strokeWidth={3.5}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    fill="none"
-                  />
-                  <AnimatedCircle animatedProps={nodeProps} r={13} fill={colors.lilacPale} fillOpacity={0.16} />
-                  <AnimatedCircle animatedProps={nodeProps} r={8} fill={colors.lilacPale} fillOpacity={0.3} />
-                  <AnimatedCircle animatedProps={nodeProps} r={4.5} fill="#ffffff" />
+                  <AnimatedG animatedProps={lineProps} opacity={0}>
+                    <AnimatedPath
+                      animatedProps={pathProps}
+                      d=""
+                      stroke={colors.lilac}
+                      strokeOpacity={0.14}
+                      strokeWidth={11.9}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      fill="none"
+                    />
+                    <AnimatedPath
+                      animatedProps={pathProps}
+                      d=""
+                      stroke={colors.lilac}
+                      strokeOpacity={0.18}
+                      strokeWidth={7}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      fill="none"
+                    />
+                    <AnimatedPath
+                      animatedProps={pathProps}
+                      d=""
+                      stroke="url(#line)"
+                      strokeWidth={3.5}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      fill="none"
+                    />
+                    {/* cx/cy/opacity are also set statically: animated props do not
+                        always land on mount, and without them these would paint at
+                        0,0 — a lilac halo in the corner until the first touch. */}
+                    <AnimatedCircle
+                      animatedProps={nodeProps}
+                      cx={-40}
+                      cy={-40}
+                      opacity={0}
+                      r={13}
+                      fill={colors.lilacPale}
+                      fillOpacity={0.16}
+                    />
+                    <AnimatedCircle
+                      animatedProps={nodeProps}
+                      cx={-40}
+                      cy={-40}
+                      opacity={0}
+                      r={8}
+                      fill={colors.lilacPale}
+                      fillOpacity={0.3}
+                    />
+                    <AnimatedCircle
+                      animatedProps={nodeProps}
+                      cx={-40}
+                      cy={-40}
+                      opacity={0}
+                      r={4.5}
+                      fill="#ffffff"
+                    />
+                  </AnimatedG>
                 </Svg>
               )}
               <Animated.View style={[styles.hint, hintStyle]} pointerEvents="none">
