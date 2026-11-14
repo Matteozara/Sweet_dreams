@@ -84,16 +84,17 @@ export default function App() {
     saveEntries(next);
   };
 
-  const today = entries.find((e) => e.date === dayKey());
+  // The newest entry for today: with keepEveryTry there can be several.
+  const today = [...entries].reverse().find((e) => e.date === dayKey());
   const latest = today ?? entries[entries.length - 1];
 
-  const finishSetup = ({ movement, reminder }) => {
-    updateProfile({ movement, reminder, onboarded: true });
+  const finishSetup = ({ movement, reminder, keepEveryTry }) => {
+    updateProfile({ movement, reminder, keepEveryTry, onboarded: true });
     syncReminder(reminder);
   };
 
-  const saveSettings = ({ movement, reminder }) => {
-    updateProfile({ movement, reminder });
+  const saveSettings = ({ movement, reminder, keepEveryTry }) => {
+    updateProfile({ movement, reminder, keepEveryTry });
     syncReminder(reminder);
     setSettingsOpen(false);
   };
@@ -107,7 +108,7 @@ export default function App() {
       answer: draft.answer,
       line,
     };
-    const next = upsertEntry(entries, entry);
+    const next = upsertEntry(entries, entry, { keepEveryTry: __DEV__ && profile.keepEveryTry });
     updateEntries(next);
     setDraft(null);
     setTab('rest'); // the evening ends in the wind-down screen
@@ -175,7 +176,6 @@ export default function App() {
       <RestScreen
         entry={latest}
         onProgress={() => setTab('analysis')}
-        onRedo={() => setTab('reflection')}
         onSettings={openSettings}
       />
     );

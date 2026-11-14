@@ -11,6 +11,9 @@ export const defaultProfile = {
   // Who this person is in care with. Set by the clinic, never from the app —
   // placeholder values until there is a backend to read them from.
   care: { therapist: 'Dr. M. Hendriks', clinic: 'Lindehof Clinic' },
+  // Development only: keep every drawing instead of one per day, so the
+  // overlay can be filled with real lines rather than sample weeks.
+  keepEveryTry: false,
 };
 
 async function read(key, fallback) {
@@ -31,9 +34,17 @@ export const saveProfile = (profile) => AsyncStorage.setItem(PROFILE, JSON.strin
 export const saveEntries = (entries) => AsyncStorage.setItem(ENTRIES, JSON.stringify(entries)).catch(() => {});
 export const clearAllData = () => AsyncStorage.multiRemove([PROFILE, ENTRIES]).catch(() => {});
 
-/** One entry per day: a new one for the same date replaces the old one. */
-export function upsertEntry(entries, entry) {
-  return [...entries.filter((e) => e.date !== entry.date), entry].sort((a, b) => a.date.localeCompare(b.date));
+/**
+ * One entry per day: a new one for the same date replaces the old one.
+ *
+ * With `keepEveryTry` (development only) nothing is replaced, so repeated
+ * drawings on one day all survive and the overlay shows real lines.
+ */
+export function upsertEntry(entries, entry, { keepEveryTry = false } = {}) {
+  const kept = keepEveryTry ? entries : entries.filter((e) => e.date !== entry.date);
+  return [...kept, entry].sort(
+    (a, b) => a.date.localeCompare(b.date) || String(a.finishedAt).localeCompare(String(b.finishedAt))
+  );
 }
 
 function buildSampleMotion(points, durationMs) {

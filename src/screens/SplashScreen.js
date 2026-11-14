@@ -10,14 +10,15 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import Moon from '../components/Moon';
+import { PrimaryButton } from '../components/Buttons';
 import { colors, font, motion } from '../theme';
 
 const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
 
 /**
- * The splash, shown on every launch: the sleeping moon settles in, then the
- * name and the line underneath it. It calls `onDone` when the animation
- * finishes — App keeps it on screen until the stored profile has loaded too.
+ * The opening screen, shown on every launch: the sleeping moon settles in,
+ * then the name and the way in. It waits for a tap — `onDone` is only called
+ * when the button is pressed, never on a timer.
  */
 export default function SplashScreen({ onDone }) {
   const reduced = useReducedMotion();
@@ -25,14 +26,9 @@ export default function SplashScreen({ onDone }) {
   const word = useSharedValue(reduced ? 1 : 0);
 
   useEffect(() => {
-    if (reduced) {
-      const t = setTimeout(() => onDone?.(), 600);
-      return () => clearTimeout(t);
-    }
+    if (reduced) return;
     moon.set(withTiming(1, { duration: 700, easing: EASE_OUT }));
     word.set(withDelay(420, withTiming(1, { duration: motion.slow, easing: EASE_OUT })));
-    const t = setTimeout(() => onDone?.(), 1700);
-    return () => clearTimeout(t);
   }, []);
 
   const moonStyle = useAnimatedStyle(() => ({
@@ -53,9 +49,9 @@ export default function SplashScreen({ onDone }) {
           <Moon />
         </Animated.View>
 
-        <Animated.View style={wordStyle}>
+        <Animated.View style={[styles.below, wordStyle]}>
           <Text style={styles.wordmark}>Sweet Dreams</Text>
-          <Text style={styles.tagline}>Draw a line under today.</Text>
+          <PrimaryButton title="Draw a line under today." onPress={onDone} style={styles.cta} />
         </Animated.View>
       </View>
     </View>
@@ -64,7 +60,8 @@ export default function SplashScreen({ onDone }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
+  below: { alignSelf: 'stretch', alignItems: 'center' },
   wordmark: {
     fontFamily: font.semibold,
     fontSize: 26,
@@ -72,11 +69,5 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
   },
-  tagline: {
-    fontFamily: font.regular,
-    fontSize: 15,
-    color: colors.muted,
-    textAlign: 'center',
-    marginTop: 8,
-  },
+  cta: { alignSelf: 'stretch', marginTop: 28 },
 });
