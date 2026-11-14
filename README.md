@@ -57,6 +57,14 @@ a score from 0 (depleted, strained) to 10 (calm, energised) and a short written 
 the entry as `voiceState` and shown under "How you sounded" on the Analysis screen. It uses the
 same `EXPO_PUBLIC_GEMINI_API_KEY`; without a key, or offline, the entry is simply saved without it.
 
+## Content state
+
+Every closed evening, typed or spoken, also has its words analysed (`src/contentState.js`): the
+typed text, or the transcript of the recording, is sent once to the same Gemini model. The reply
+is a score from 0 (a very heavy day) to 10 (a very good one) and a short written analysis of the
+themes and emotional tone, saved on the entry as `contentState` and shown under "What you said"
+on the Analysis screen. A spoken answer needs a transcript, so it needs the key during recording.
+
 ## Project structure
 
 ```
@@ -67,7 +75,9 @@ src/line.js                day-line maths, dates, formatting
 src/storage.js             AsyncStorage persistence + sample data
 src/services.js            reminder notification, location, haptics
 src/transcribe.js          live speech-to-text over the Gemini Live API
+src/gemini.js              one structured request to the Gemini Interactions API
 src/voiceState.js          prosody / voice-quality score and analysis of the recording
+src/contentState.js        score and analysis of the words, typed or transcribed
 src/components/            Backdrop, Buttons, Chrome (header, nav, toggle), Icon, LineArt, TimeSheet
 src/screens/               Welcome, Setup, Reflection, DayLine, Rest, Analysis
 setup_env.sh / run.sh      environment + launch scripts

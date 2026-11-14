@@ -59,6 +59,24 @@ export function buildWeeklyAnalysis(entries, { phq9 = 0, sigmaPool = null } = {}
 
   const baseline = computeBaseline(dailyRows, { phq9, sigmaPool });
 
+  // Modality aggregates and baseline z-scores over any set of evenings.
+  const summarize = (set) => {
+    const drawing = aggregateDrawingWeek(set);
+    const typing = aggregateTypingWeek(set);
+    const voice = aggregateVoiceWeek(set);
+    const zScores = baseline.ready
+      ? {
+          drawingSpeed: normalizeFeature(drawing?.meanSpeed, baseline.stats.drawingSpeed, { signed: true }),
+          drawingPauseTimeMs: normalizeFeature(drawing?.totalPauseTimeMs, baseline.stats.drawingPauseTimeMs, { signed: true }),
+          ikdMedianMs: normalizeFeature(typing?.medianIkdMs, baseline.stats.ikdMedianMs, { signed: false }),
+          ikdMadMs: normalizeFeature(typing?.ikdMadMs, baseline.stats.ikdMadMs, { signed: true }),
+          typingSessionMs: normalizeFeature(typing?.medianSessionLengthMs, baseline.stats.typingSessionMs, { signed: true }),
+          voicePauseRatio: normalizeFeature(voice?.pauseRatio, baseline.stats.voicePauseRatio, { signed: true }),
+        }
+      : null;
+    return { drawing, typing, voice, zScores };
+  };
+
   // Group entries by Monday week key.
   const map = new Map();
   for (const entry of sorted) {
@@ -71,9 +89,9 @@ export function buildWeeklyAnalysis(entries, { phq9 = 0, sigmaPool = null } = {}
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([startKey, weekEntries]) => {
       const endKey = weekEndKey(startKey);
-      const drawing = aggregateDrawingWeek(weekEntries);
-      const typing = aggregateTypingWeek(weekEntries);
-      const voice = aggregateVoiceWeek(weekEntries);
+      const { drawing, typing, voice, zScores } = summarize(weekEntries);
+      // The same summary over a single evening, for the day-by-day view.
+      const days = weekEntries.map((entry) => ({ entry, date: entry.date, ...summarize([entry]) }));
       const scoredDays = weekEntries
         .filter((e) => typeof e.dayScore?.score === 'number')
         .map((e) => ({ date: e.date, ...e.dayScore }));
@@ -87,23 +105,13 @@ export function buildWeeklyAnalysis(entries, { phq9 = 0, sigmaPool = null } = {}
           }
         : null;
 
-      const zScores = baseline.ready
-        ? {
-            drawingSpeed: normalizeFeature(drawing?.meanSpeed, baseline.stats.drawingSpeed, { signed: true }),
-            drawingPauseTimeMs: normalizeFeature(drawing?.totalPauseTimeMs, baseline.stats.drawingPauseTimeMs, { signed: true }),
-            ikdMedianMs: normalizeFeature(typing?.medianIkdMs, baseline.stats.ikdMedianMs, { signed: false }),
-            ikdMadMs: normalizeFeature(typing?.ikdMadMs, baseline.stats.ikdMadMs, { signed: true }),
-            typingSessionMs: normalizeFeature(typing?.medianSessionLengthMs, baseline.stats.typingSessionMs, { signed: true }),
-            voicePauseRatio: normalizeFeature(voice?.pauseRatio, baseline.stats.voicePauseRatio, { signed: true }),
-          }
-        : null;
-
       return {
         weekKey: startKey,
         startKey,
         endKey,
         label: formatWeekLabel(startKey, endKey),
         entries: weekEntries,
+        days,
         drawing,
         typing,
         voice,

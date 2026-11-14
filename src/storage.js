@@ -122,6 +122,19 @@ function sampleVoiceState(back, at) {
   return { score, analysis, model: 'sample', at };
 }
 
+// Stand-ins for what the content analysis returns, for every sample evening.
+const SAMPLE_CONTENT_STATES = [
+  [3, 'The reflection centres on a long, draining day and a sense of falling behind. Worry about unfinished work recurs, with little mention of rest or company. The tone is weary and self-critical.'],
+  [5, 'The reflection lists the day\'s tasks in a matter-of-fact way. Some frustration appears around a conversation that went badly, balanced by relief at getting home. The tone is mixed and tired.'],
+  [6, 'The reflection mentions a walk and a call with a friend alongside ordinary work stress. Worries are named but not dwelt on. The tone is steadier, with small moments of ease.'],
+  [8, 'The reflection describes a productive day and time spent with people who matter. There is gratitude and some looking forward to tomorrow. The tone is light and hopeful.'],
+];
+
+function sampleContentState(back, at) {
+  const [score, analysis] = SAMPLE_CONTENT_STATES[Math.min(3, Math.floor((16 - back) / 4))];
+  return { score, analysis, model: 'sample', at };
+}
+
 /** Two plausible past weeks, for demos. Never overwrites real days. */
 export function sampleEntries(existing = []) {
   const taken = new Set(existing.map((e) => e.date));
@@ -154,6 +167,7 @@ export function sampleEntries(existing = []) {
       finishedAt: new Date(d.getTime() + durationMs).toISOString(),
       answer,
       ...(answer.type === 'audio' && { voiceState: sampleVoiceState(back, d.toISOString()) }),
+      contentState: sampleContentState(back, d.toISOString()),
       dayScore: {
         score,
         rationale: 'Sample trajectory lifting gently toward the evening.',

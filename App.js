@@ -19,6 +19,7 @@ import AnalysisScreen from './src/screens/AnalysisScreen';
 import { clearAllData, defaultProfile, loadAll, sampleEntries, saveEntries, saveProfile, upsertEntry } from './src/storage';
 import { sampleLocation, syncReminder } from './src/services';
 import { analyzeVoiceState } from './src/voiceState';
+import { analyzeContentState, answerText } from './src/contentState';
 import { scoreDayLine, scoreDayLineDetailed } from './src/analysis/dayScore';
 import { dayKey } from './src/line';
 import { colors } from './src/theme';
@@ -114,7 +115,7 @@ export default function App() {
     updateEntries(next);
     setDraft(null);
     setTab('rest'); // the evening ends in the wind-down screen
-    // Both arrive after the evening is closed, and are added to the entry when they do.
+    // These arrive after the evening is closed, and are added to the entry when they do.
     const patchEntry = (patch) =>
       setEntries((list) => {
         const patched = list.map((e) => (e.id === entry.id ? { ...e, ...patch } : e));
@@ -127,6 +128,7 @@ export default function App() {
     if (entry.answer.type === 'audio') {
       analyzeVoiceState(entry.answer.uri).then((voiceState) => voiceState && patchEntry({ voiceState }));
     }
+    analyzeContentState(answerText(entry.answer)).then((contentState) => contentState && patchEntry({ contentState }));
     scoreDayLine(line).then((dayScore) => {
       if (!dayScore) return;
       setEntries((list) => {
