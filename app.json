@@ -8,12 +8,17 @@
     "ios": {
       "supportsTablet": false,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Sweet Dreams uses the microphone so you can answer the evening question with your voice."
+        "NSMicrophoneUsageDescription": "Sweet Dreams uses the microphone so you can answer the evening question with your voice.",
+        "NSCalendarsUsageDescription": "Sweet Dreams adds activities you schedule to your calendar.",
+        "NSCalendarsFullAccessUsageDescription": "Sweet Dreams adds activities you schedule to your calendar.",
+        "NSCalendarsWriteOnlyAccessUsageDescription": "Sweet Dreams adds activities you schedule to your calendar."
       }
     },
     "android": {
       "permissions": [
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR"
       ]
     },
     "plugins": [

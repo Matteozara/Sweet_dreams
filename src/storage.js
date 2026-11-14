@@ -3,7 +3,7 @@ import { dayKey } from './line';
 
 const PROFILE = 'sweetdreams.profile.v1';
 const ENTRIES = 'sweetdreams.entries.v1';
-export const CLEAR_TODAY_ONCE = 'sweetdreams.clearTodayOnce.20261114.v4';
+export const CLEAR_TODAY_ONCE = 'sweetdreams.clearTodayOnce.20261114.v7';
 
 let clearTodayInFlight = null;
 
