@@ -108,6 +108,20 @@ function buildSampleVoice(back) {
   };
 }
 
+// Stand-ins for what the voice-state analysis returns, for the sample voice evenings.
+const SAMPLE_VOICE_STATES = [
+  [4, 'The voice is quiet and fairly flat, with little pitch movement. Speech is slow, with several long pauses before new thoughts. There is some creak at the ends of phrases, which suggests tiredness.'],
+  [5, 'Pitch stays in a narrow range and the energy is moderate. The pace is even, with a few hesitations mid-sentence. The voice sounds neutral, neither strained nor especially lively.'],
+  [6, 'The voice is steady with some natural rise and fall. Speaking rate is unhurried and pauses are short. A slight breathiness remains, but the overall impression is settled.'],
+  [8, 'Pitch is varied and the voice carries clear energy. The pace is fluent, with brief, well-placed pauses. The tone is warm and relaxed, which suggests a calm and engaged state.'],
+];
+
+function sampleVoiceState(back, at) {
+  // Later evenings sound a little lighter, like the lines.
+  const [score, analysis] = SAMPLE_VOICE_STATES[Math.min(3, Math.floor((16 - back) / 4))];
+  return { score, analysis, model: 'sample', at };
+}
+
 /** Two plausible past weeks, for demos. Never overwrites real days. */
 export function sampleEntries(existing = []) {
   const taken = new Set(existing.map((e) => e.date));
@@ -137,6 +151,7 @@ export function sampleEntries(existing = []) {
       startedAt: d.toISOString(),
       finishedAt: new Date(d.getTime() + durationMs).toISOString(),
       answer,
+      ...(answer.type === 'audio' && { voiceState: sampleVoiceState(back, d.toISOString()) }),
       line: {
         points,
         motion: buildSampleMotion(points, durationMs),

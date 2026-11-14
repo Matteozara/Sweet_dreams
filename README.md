@@ -48,6 +48,15 @@ can be corrected; the original recognised text is kept alongside when it was edi
 `EXPO_PUBLIC_GEMINI_API_KEY`, and restart with `./run.sh --clear`. Without a key the app
 records as before, with no transcript.
 
+## Voice state
+
+When an evening answered by voice is closed, the recording is sent once to the Gemini
+Interactions API (`gemini-4-hydrogen`, see `src/voiceState.js`). It is judged on how it sounds,
+not on the words: prosody (pitch, energy, speaking rate, pauses) and voice quality. The reply is
+a score from 0 (depleted, strained) to 10 (calm, energised) and a short written analysis, saved on
+the entry as `voiceState` and shown under "How you sounded" on the Analysis screen. It uses the
+same `EXPO_PUBLIC_GEMINI_API_KEY`; without a key, or offline, the entry is simply saved without it.
+
 ## Project structure
 
 ```
@@ -58,6 +67,7 @@ src/line.js                day-line maths, dates, formatting
 src/storage.js             AsyncStorage persistence + sample data
 src/services.js            reminder notification, location, haptics
 src/transcribe.js          live speech-to-text over the Gemini Live API
+src/voiceState.js          prosody / voice-quality score and analysis of the recording
 src/components/            Backdrop, Buttons, Chrome (header, nav, toggle), Icon, LineArt, TimeSheet
 src/screens/               Welcome, Setup, Reflection, DayLine, Rest, Analysis
 setup_env.sh / run.sh      environment + launch scripts

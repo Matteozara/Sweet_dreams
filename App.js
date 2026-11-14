@@ -18,6 +18,7 @@ import RestScreen from './src/screens/RestScreen';
 import AnalysisScreen from './src/screens/AnalysisScreen';
 import { clearAllData, defaultProfile, loadAll, sampleEntries, saveEntries, saveProfile, upsertEntry } from './src/storage';
 import { sampleLocation, syncReminder } from './src/services';
+import { analyzeVoiceState } from './src/voiceState';
 import { dayKey } from './src/line';
 import { colors } from './src/theme';
 
@@ -112,15 +113,18 @@ export default function App() {
     updateEntries(next);
     setDraft(null);
     setTab('rest'); // the evening ends in the wind-down screen
-    if (profile.movement) {
-      sampleLocation().then((location) => {
-        if (!location) return;
-        setEntries((list) => {
-          const withLocation = list.map((e) => (e.id === entry.id ? { ...e, location } : e));
-          saveEntries(withLocation);
-          return withLocation;
-        });
+    // Both arrive after the evening is closed, and are added to the entry when they do.
+    const patchEntry = (patch) =>
+      setEntries((list) => {
+        const patched = list.map((e) => (e.id === entry.id ? { ...e, ...patch } : e));
+        saveEntries(patched);
+        return patched;
       });
+    if (profile.movement) {
+      sampleLocation().then((location) => location && patchEntry({ location }));
+    }
+    if (entry.answer.type === 'audio') {
+      analyzeVoiceState(entry.answer.uri).then((voiceState) => voiceState && patchEntry({ voiceState }));
     }
   };
 
