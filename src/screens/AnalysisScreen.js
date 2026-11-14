@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Defs, Line, Path } from 'react-native-svg';
+import Svg, { Circle, Defs, Line, Path, Rect } from 'react-native-svg';
 import { Card, Header } from '../components/Chrome';
 import { GhostButton } from '../components/Buttons';
 import { GlowLine, LineGradient } from '../components/LineArt';
@@ -11,6 +11,8 @@ import { card, colors, font, radius, type } from '../theme';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
+const fmtDay = (key, weekday = 'long') =>
+  keyToDate(key).toLocaleDateString(undefined, { weekday, day: 'numeric', month: 'short' });
 const fmtNum = (v, digits = 1) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(digits) : '—');
 const fmtSec = (ms, digits = 1) => (typeof ms === 'number' && Number.isFinite(ms) ? `${(ms / 1000).toFixed(digits)} s` : '—');
 const fmtMs = (ms) => (typeof ms === 'number' && Number.isFinite(ms) ? `${Math.round(ms)} ms` : '—');
@@ -64,9 +66,14 @@ function Overlay({ entries }) {
   );
 }
 
-/** Selected week's lines joined end to end. */
-function Week({ entries }) {
-  const [w, onLayout] = useWidth();
+/** Selected week's lines joined end to end. Tapping a day's stretch selects it. */
+function Week({ entries, selectedId, onSelect }) {
+  const [w, onWidth] = useWidth();
+  const [boxH, setBoxH] = useState(0);
+  const onLayout = (e) => {
+    onWidth(e);
+    setBoxH(e.nativeEvent.layout.height);
+  };
   const h = 140;
   const days = entries.slice(-7);
   const inset = 14;
@@ -80,6 +87,23 @@ function Week({ entries }) {
           <Defs>
             <LineGradient x2={w} />
           </Defs>
+          {days.map(
+            (e, i) =>
+              e.id === selectedId && (
+                <Rect
+                  key={e.id}
+                  x={inset + i * col + 2}
+                  y={2}
+                  width={Math.max(0, col - 4)}
+                  height={h - 4}
+                  rx={radius.sm}
+                  fill={colors.lilac}
+                  fillOpacity={0.12}
+                  stroke={colors.lilac}
+                  strokeOpacity={0.35}
+                />
+              )
+          )}
           {days.slice(1).map((e, i) => (
             <Line
               key={e.id}
@@ -113,11 +137,23 @@ function Week({ entries }) {
         {days.map((e) => {
           const now = e.date === today;
           return (
-            <Text key={e.id} style={[styles.day, now && styles.dayNow]}>
+            <Text key={e.id} style={[styles.day, now && styles.dayNow, e.id === selectedId && styles.daySelected]}>
               {now ? 'Now' : WEEKDAYS[keyToDate(e.date).getDay()]}
             </Text>
           );
         })}
+      </View>
+      <View style={[styles.dayHits, { width: w, height: boxH }]}>
+        {days.map((e) => (
+          <Pressable
+            key={e.id}
+            style={styles.dayHit}
+            onPress={() => onSelect(e.id)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: e.id === selectedId }}
+            accessibilityLabel={fmtDay(e.date)}
+          />
+        ))}
       </View>
     </View>
   );
@@ -162,27 +198,17 @@ function MetricRow({ label, value, z }) {
   );
 }
 
-/** One evening per row: the 0–10 score and written analysis saved under `field`. Hidden when the week has none. */
-function StateCard({ title, field, entries, empty, note }) {
-  const shown = entries.filter((e) => e[field]?.analysis);
-  if (shown.length === 0) return null;
+/** The 0–10 score and written analysis saved under `field` for one evening. Hidden when it has none. */
+function StateCard({ title, field, entry, empty, note }) {
+  const state = entry[field];
+  if (!state?.analysis) return null;
   return (
     <Card style={styles.card}>
       <View style={styles.cardHead}>
         <Text style={styles.cardTitle}>{title}</Text>
-        <Badge text={`${shown.length} ${shown.length === 1 ? 'evening' : 'evenings'}`} />
+        <Text style={styles.metricValue}>{state.score === null ? empty : `${state.score} / 10`}</Text>
       </View>
-      {shown.map((e) => (
-        <View key={e.id} style={styles.state}>
-          <View style={styles.stateHead}>
-            <Text style={styles.metricLabel}>
-              {keyToDate(e.date).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' })}
-            </Text>
-            <Text style={styles.metricValue}>{e[field].score === null ? empty : `${e[field].score} / 10`}</Text>
-          </View>
-          <Text style={styles.stateText}>{e[field].analysis}</Text>
-        </View>
-      ))}
+      <Text style={styles.stateText}>{state.analysis}</Text>
       <Text style={styles.note}>{note}</Text>
     </Card>
   );
@@ -218,6 +244,13 @@ export default function AnalysisScreen({ entries, onLoadSample, onScoreEntries, 
     }
   };
 
+  // The evening whose analysis is shown; falls back to the week's latest when
+  // nothing in the visible week has been tapped.
+  const [selectedId, setSelectedId] = useState(null);
+  const activeDay = activeWeek
+    ? activeWeek.days.find((d) => d.entry.id === selectedId) || activeWeek.days[activeWeek.days.length - 1]
+    : null;
+
   const confirmDelete = () => {
     Alert.alert(
       'Delete my data',
@@ -246,7 +279,7 @@ export default function AnalysisScreen({ entries, onLoadSample, onScoreEntries, 
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.head}>
-            <Text style={[type.display, styles.center]}>Weekly analysis</Text>
+            <Text style={[type.display, styles.center]}>Daily analysis</Text>
             <Text style={[type.bodySm, styles.center]}>
               Pipeline v{baseline.pipelineVersion} · {weeks.length} {weeks.length === 1 ? 'week' : 'weeks'} logged
             </Text>
@@ -285,9 +318,10 @@ export default function AnalysisScreen({ entries, onLoadSample, onScoreEntries, 
             <Card style={styles.card}>
               <View style={styles.cardHead}>
                 <Text style={styles.cardTitle}>This week, end to end</Text>
-                <Badge text={`${activeWeek.entries.length} days`} />
+                <Badge text={fmtDay(activeDay.date, 'short')} tone="ok" />
               </View>
-              <Week entries={activeWeek.entries} />
+              <Week entries={activeWeek.entries} selectedId={activeDay.entry.id} onSelect={setSelectedId} />
+              <Text style={styles.note}>Tap a day to see its analysis.</Text>
             </Card>
           )}
 
@@ -357,160 +391,160 @@ export default function AnalysisScreen({ entries, onLoadSample, onScoreEntries, 
             </Text>
           </Card>
 
-          {activeWeek && (
+          {activeDay && (
             <Card style={styles.card}>
               <View style={styles.cardHead}>
                 <Text style={styles.cardTitle}>Finger drawing (v2)</Text>
-                {activeWeek.drawing ? (
+                {activeDay.drawing ? (
                   <Badge
                     text={
-                      activeWeek.drawing.lowQualityCount === 0
-                        ? `Valid (${Math.round(activeWeek.drawing.medianDtMs)} ms)`
-                        : `${activeWeek.drawing.lowQualityCount} low-rate`
+                      activeDay.drawing.lowQualityCount === 0
+                        ? `Valid (${Math.round(activeDay.drawing.medianDtMs)} ms)`
+                        : 'Low sample rate'
                     }
-                    tone={activeWeek.drawing.lowQualityCount === 0 ? 'ok' : 'warn'}
+                    tone={activeDay.drawing.lowQualityCount === 0 ? 'ok' : 'warn'}
                   />
                 ) : (
                   <Badge text="No motion data" />
                 )}
               </View>
-              {activeWeek.drawing ? (
+              {activeDay.drawing ? (
                 <View style={styles.metrics}>
-                  <MetricRow label="Movement time" value={fmtSec(activeWeek.drawing.movementTimeMs, 2)} />
+                  <MetricRow label="Movement time" value={fmtSec(activeDay.drawing.movementTimeMs, 2)} />
                   <MetricRow
                     label="Mean speed"
-                    value={`${fmtNum(activeWeek.drawing.meanSpeed)} mm/s`}
-                    z={activeWeek.zScores ? fmtZ(activeWeek.zScores.drawingSpeed) : null}
+                    value={`${fmtNum(activeDay.drawing.meanSpeed)} mm/s`}
+                    z={activeDay.zScores ? fmtZ(activeDay.zScores.drawingSpeed) : null}
                   />
-                  <MetricRow label="Speed CV" value={fmtNum(activeWeek.drawing.speedCV, 2)} />
-                  <MetricRow label="Speed reversals / 10 mm" value={fmtNum(activeWeek.drawing.speedReversalsPer10mm, 2)} />
-                  <MetricRow label="Normalized jerk" value={fmtNum(activeWeek.drawing.normalizedJerk, 1)} />
+                  <MetricRow label="Speed CV" value={fmtNum(activeDay.drawing.speedCV, 2)} />
+                  <MetricRow label="Speed reversals / 10 mm" value={fmtNum(activeDay.drawing.speedReversalsPer10mm, 2)} />
+                  <MetricRow label="Normalized jerk" value={fmtNum(activeDay.drawing.normalizedJerk, 1)} />
                   <MetricRow
                     label="Pauses (< 5 mm/s, ≥ 100 ms)"
-                    value={`${fmtNum(activeWeek.drawing.pauseCount, 0)} · ${fmtMs(activeWeek.drawing.totalPauseTimeMs)}`}
-                    z={activeWeek.zScores ? fmtZ(activeWeek.zScores.drawingPauseTimeMs) : null}
+                    value={`${fmtNum(activeDay.drawing.pauseCount, 0)} · ${fmtMs(activeDay.drawing.totalPauseTimeMs)}`}
+                    z={activeDay.zScores ? fmtZ(activeDay.zScores.drawingPauseTimeMs) : null}
                   />
-                  <MetricRow label="Finger lifts" value={fmtNum(activeWeek.drawing.fingerLifts, 0)} />
+                  <MetricRow label="Finger lifts" value={fmtNum(activeDay.drawing.fingerLifts, 0)} />
                 </View>
               ) : (
-                <Text style={styles.note}>Draw a day line this week to compute Savitzky–Golay kinematics.</Text>
+                <Text style={styles.note}>No motion data for this day's line to compute Savitzky–Golay kinematics.</Text>
               )}
             </Card>
           )}
 
-          {activeWeek && (
+          {activeDay && (
             <Card style={styles.card}>
               <View style={styles.cardHead}>
                 <Text style={styles.cardTitle}>Typing (v2)</Text>
-                {activeWeek.typing ? (
+                {activeDay.typing ? (
                   <Badge
                     text={
-                      activeWeek.typing.usableCount === 0
+                      activeDay.typing.usableCount === 0
                         ? 'Dropped (< 10 keys)'
-                        : activeWeek.typing.lowConfidenceCount > 0
-                        ? `${activeWeek.typing.lowConfidenceCount} low_confidence`
+                        : activeDay.typing.lowConfidenceCount > 0
+                        ? 'Low confidence'
                         : 'Valid'
                     }
                     tone={
-                      activeWeek.typing.usableCount > 0 && activeWeek.typing.lowConfidenceCount === 0 ? 'ok' : 'warn'
+                      activeDay.typing.usableCount > 0 && activeDay.typing.lowConfidenceCount === 0 ? 'ok' : 'warn'
                     }
                   />
                 ) : (
                   <Badge text="No text entries" />
                 )}
               </View>
-              {activeWeek.typing && activeWeek.typing.usableCount > 0 ? (
+              {activeDay.typing && activeDay.typing.usableCount > 0 ? (
                 <View style={styles.metrics}>
                   <MetricRow
                     label="Median IKD"
-                    value={fmtMs(activeWeek.typing.medianIkdMs)}
-                    z={activeWeek.zScores ? fmtZ(activeWeek.zScores.ikdMedianMs, true) : null}
+                    value={fmtMs(activeDay.typing.medianIkdMs)}
+                    z={activeDay.zScores ? fmtZ(activeDay.zScores.ikdMedianMs, true) : null}
                   />
-                  <MetricRow label="95th-pct IKD" value={fmtMs(activeWeek.typing.p95IkdMs)} />
+                  <MetricRow label="95th-pct IKD" value={fmtMs(activeDay.typing.p95IkdMs)} />
                   <MetricRow
                     label="IKD MAD (variability)"
-                    value={fmtMs(activeWeek.typing.ikdMadMs)}
-                    z={activeWeek.zScores ? fmtZ(activeWeek.zScores.ikdMadMs) : null}
+                    value={fmtMs(activeDay.typing.ikdMadMs)}
+                    z={activeDay.zScores ? fmtZ(activeDay.zScores.ikdMadMs) : null}
                   />
-                  <MetricRow label="Backspace rate" value={fmtPct(activeWeek.typing.backspaceRate)} />
+                  <MetricRow label="Backspace rate" value={fmtPct(activeDay.typing.backspaceRate)} />
                   <MetricRow
-                    label="Median session length"
-                    value={fmtSec(activeWeek.typing.medianSessionLengthMs, 1)}
-                    z={activeWeek.zScores ? fmtZ(activeWeek.zScores.typingSessionMs) : null}
+                    label="Session length"
+                    value={fmtSec(activeDay.typing.medianSessionLengthMs, 1)}
+                    z={activeDay.zScores ? fmtZ(activeDay.zScores.typingSessionMs) : null}
                   />
-                  <MetricRow label="Keys / day" value={fmtNum(activeWeek.typing.keysPerDay, 0)} />
-                  <MetricRow label="Night typing (00:00–05:00)" value={fmtPct(activeWeek.typing.nightShare)} />
+                  <MetricRow label="Keys typed" value={fmtNum(activeDay.typing.keysPerDay, 0)} />
+                  <MetricRow label="Night typing (00:00–05:00)" value={fmtPct(activeDay.typing.nightShare)} />
                   <Text style={styles.note}>
                     Hold time, autocorrect, swipe/paste & phone movement require the native keyboard extension.
                   </Text>
                 </View>
               ) : (
-                <Text style={styles.note}>Type a reflection (≥ 10 keys) this week to compute IKD & backspace metrics.</Text>
+                <Text style={styles.note}>This day needs a typed reflection (≥ 10 keys) to compute IKD & backspace metrics.</Text>
               )}
             </Card>
           )}
 
-          {activeWeek && (
+          {activeDay && (
             <Card style={styles.card}>
               <View style={styles.cardHead}>
                 <Text style={styles.cardTitle}>Voice (v2)</Text>
-                {activeWeek.voice ? (
+                {activeDay.voice ? (
                   <Badge
                     text={
-                      activeWeek.voice.rejectedCount > 0
-                        ? `${activeWeek.voice.rejectedCount} rejected`
-                        : activeWeek.voice.lowConfidenceCount > 0
-                        ? `${activeWeek.voice.lowConfidenceCount} low_confidence`
+                      activeDay.voice.rejectedCount > 0
+                        ? 'Rejected'
+                        : activeDay.voice.lowConfidenceCount > 0
+                        ? 'Low confidence'
                         : 'Valid'
                     }
                     tone={
-                      activeWeek.voice.rejectedCount === 0 && activeWeek.voice.lowConfidenceCount === 0 ? 'ok' : 'warn'
+                      activeDay.voice.rejectedCount === 0 && activeDay.voice.lowConfidenceCount === 0 ? 'ok' : 'warn'
                     }
                   />
                 ) : (
                   <Badge text="No voice entries" />
                 )}
               </View>
-              {activeWeek.voice ? (
+              {activeDay.voice ? (
                 <View style={styles.metrics}>
-                  <MetricRow label="VAD speech time" value={fmtSec(activeWeek.voice.speechTimeMs, 1)} />
+                  <MetricRow label="VAD speech time" value={fmtSec(activeDay.voice.speechTimeMs, 1)} />
                   <MetricRow
                     label="Pause ratio (≥ 250 ms)"
-                    value={fmtPct(activeWeek.voice.pauseRatio)}
-                    z={activeWeek.zScores ? fmtZ(activeWeek.zScores.voicePauseRatio) : null}
+                    value={fmtPct(activeDay.voice.pauseRatio)}
+                    z={activeDay.zScores ? fmtZ(activeDay.zScores.voicePauseRatio) : null}
                   />
-                  <MetricRow label="Median pause length" value={fmtMs(activeWeek.voice.medianPauseMs)} />
-                  <MetricRow label="Long pauses / min (≥ 1 s)" value={fmtNum(activeWeek.voice.longPausesPerMin, 1)} />
-                  <MetricRow label="Loudness CV" value={fmtNum(activeWeek.voice.loudnessCV, 2)} />
+                  <MetricRow label="Median pause length" value={fmtMs(activeDay.voice.medianPauseMs)} />
+                  <MetricRow label="Long pauses / min (≥ 1 s)" value={fmtNum(activeDay.voice.longPausesPerMin, 1)} />
+                  <MetricRow label="Loudness CV" value={fmtNum(activeDay.voice.loudnessCV, 2)} />
                   <MetricRow
                     label="Estimated SNR"
-                    value={activeWeek.voice.snrDb !== null ? `${fmtNum(activeWeek.voice.snrDb, 1)} dB` : '—'}
+                    value={activeDay.voice.snrDb !== null ? `${fmtNum(activeDay.voice.snrDb, 1)} dB` : '—'}
                   />
                   <Text style={styles.note}>
                     F0 pitch (pyin), spectral slopes & word-count rate (gemini-3.5-transcribe EU) run on the EU server.
                   </Text>
                 </View>
               ) : (
-                <Text style={styles.note}>Record a voice reflection (≥ 20 s speech) this week for pause & loudness analysis.</Text>
+                <Text style={styles.note}>This day needs a voice reflection (≥ 20 s speech) for pause & loudness analysis.</Text>
               )}
             </Card>
           )}
 
-          {activeWeek && (
+          {activeDay && (
             <StateCard
               title="How you sounded"
               field="voiceState"
-              entries={activeWeek.entries}
+              entry={activeDay.entry}
               empty="No speech"
               note="Judged by Gemini from pitch, energy, speaking rate, pauses and voice quality. 0 is depleted or strained, 10 is calm and energised. An impression, not a diagnosis."
             />
           )}
 
-          {activeWeek && (
+          {activeDay && (
             <StateCard
               title="What you said"
               field="contentState"
-              entries={activeWeek.entries}
+              entry={activeDay.entry}
               empty="Too little"
               note="Judged by Gemini from the words of your reflection, typed or spoken. 0 is a very heavy day, 10 is a very good one. An impression, not a diagnosis."
             />
@@ -586,8 +620,6 @@ const styles = StyleSheet.create({
   metricLabel: { fontFamily: font.regular, fontSize: 13, color: colors.muted, flex: 1 },
   metricRight: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
   metricZ: { fontFamily: font.medium, fontSize: 11, color: colors.lilac, fontVariant: ['tabular-nums'] },
-  state: { gap: 6, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.hairline },
-  stateHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   stateText: { ...type.bodySm, color: colors.text },
   metricValue: { fontFamily: font.semibold, fontSize: 13, color: colors.text, fontVariant: ['tabular-nums'] },
 
@@ -612,6 +644,11 @@ const styles = StyleSheet.create({
   dayRow: { flexDirection: 'row', marginTop: 6, marginHorizontal: 14 },
   day: { flex: 1, textAlign: 'center', fontFamily: font.medium, fontSize: 11, color: colors.faint },
   dayNow: { fontFamily: font.semibold, color: colors.lilacPale },
+  daySelected: { fontFamily: font.semibold, color: colors.text },
+  // Sized by the caller: an absolute overlay with no dimensions of its own
+  // gets no height here, so its tap targets would be empty.
+  dayHits: { position: 'absolute', top: 0, left: 0, flexDirection: 'row', paddingHorizontal: 14 },
+  dayHit: { flex: 1 },
 
   stats: { flexDirection: 'row', gap: 12 },
   stat: { ...card, flex: 1, borderRadius: radius.md, padding: 16, gap: 6 },
