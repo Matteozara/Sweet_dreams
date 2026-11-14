@@ -144,6 +144,8 @@ export function sampleEntries(existing = []) {
     });
     const durationMs = 2100 + (back % 4) * 180;
     const answer = back % 2 === 0 ? buildSampleTyping(back) : buildSampleVoice(back);
+    const meanY = points.reduce((s, p) => s + p.y, 0) / points.length;
+    const score = Math.round(Math.min(10, Math.max(0, (1 - meanY) * 10)) * 10) / 10;
     out.push({
       id: `sample-${date}`,
       date,
@@ -152,6 +154,12 @@ export function sampleEntries(existing = []) {
       finishedAt: new Date(d.getTime() + durationMs).toISOString(),
       answer,
       ...(answer.type === 'audio' && { voiceState: sampleVoiceState(back, d.toISOString()) }),
+      dayScore: {
+        score,
+        rationale: 'Sample trajectory lifting gently toward the evening.',
+        model: 'sample',
+        scoredAt: d.toISOString(),
+      },
       line: {
         points,
         motion: buildSampleMotion(points, durationMs),

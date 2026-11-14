@@ -19,6 +19,7 @@ import AnalysisScreen from './src/screens/AnalysisScreen';
 import { clearAllData, defaultProfile, loadAll, sampleEntries, saveEntries, saveProfile, upsertEntry } from './src/storage';
 import { sampleLocation, syncReminder } from './src/services';
 import { analyzeVoiceState } from './src/voiceState';
+import { scoreDayLine, scoreDayLineDetailed } from './src/analysis/dayScore';
 import { dayKey } from './src/line';
 import { colors } from './src/theme';
 
@@ -126,6 +127,14 @@ export default function App() {
     if (entry.answer.type === 'audio') {
       analyzeVoiceState(entry.answer.uri).then((voiceState) => voiceState && patchEntry({ voiceState }));
     }
+    scoreDayLine(line).then((dayScore) => {
+      if (!dayScore) return;
+      setEntries((list) => {
+        const withScore = list.map((e) => (e.id === entry.id ? { ...e, dayScore } : e));
+        saveEntries(withScore);
+        return withScore;
+      });
+    });
   };
 
   const openSettings = () => setSettingsOpen(true);
@@ -164,6 +173,21 @@ export default function App() {
       <AnalysisScreen
         entries={entries}
         onLoadSample={() => updateEntries(sampleEntries(entries))}
+        onScoreEntries={async (targetEntries) => {
+          const results = await Promise.all(
+            targetEntries.map(async (e) => ({ id: e.id, res: await scoreDayLineDetailed(e.line) }))
+          );
+          const map = new Map(results.filter((r) => r.res.ok).map((r) => [r.id, r.res.data]));
+          if (map.size > 0) {
+            setEntries((list) => {
+              const nextList = list.map((e) => (map.has(e.id) ? { ...e, dayScore: map.get(e.id) } : e));
+              saveEntries(nextList);
+              return nextList;
+            });
+          }
+          const firstErr = results.find((r) => !r.res.ok)?.res.error;
+          return firstErr || null;
+        }}
         onDeleteAll={async () => {
           await clearAllData();
           setEntries([]);

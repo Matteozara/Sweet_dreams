@@ -4,6 +4,7 @@ import { analyzeDrawing, DP_PER_MM } from '../drawing.js';
 import { analyzeTypingEntry } from '../typing.js';
 import { analyzeVoiceEntry } from '../voice.js';
 import { computeBaseline, normalizeFeature } from '../normalization.js';
+import { scoreDayLine } from '../dayScore.js';
 import { buildWeeklyAnalysis } from '../weekly.js';
 
 test('drawing: constant-speed stroke computes accurate speed and quality', () => {
@@ -150,4 +151,45 @@ test('normalization & weekly grouping: excludes 5 practice sessions and normaliz
   assert.ok(weekly.weeks.length >= 2);
   assert.ok(weekly.weeks[0].drawing);
   assert.ok(weekly.weeks[0].typing);
+});
+
+test('dayScore: calls Gemini API with drawing meaning and clamps 0..10 score', async () => {
+  const prevKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+  process.env.EXPO_PUBLIC_GEMINI_API_KEY = 'test-key';
+  try {
+    let capturedBody = null;
+    const mockFetch = async (_url, opts) => {
+      capturedBody = JSON.parse(opts.body);
+      return {
+        ok: true,
+        json: async () => ({
+          candidates: [
+            {
+              content: {
+                parts: [{ text: JSON.stringify({ score: 7.46, rationale: 'Lifted steadily toward night.' }) }],
+              },
+            },
+          ],
+        }),
+      };
+    };
+    const res = await scoreDayLine(
+      {
+        points: [
+          { x: 0, y: 0.7, t: 0 },
+          { x: 1, y: 0.2, t: 1200 },
+        ],
+        durationMs: 1200,
+        fingerLifts: 0,
+      },
+      { fetchImpl: mockFetch }
+    );
+    assert.ok(res);
+    assert.equal(res.score, 7.5);
+    assert.equal(res.rationale, 'Lifted steadily toward night.');
+    assert.ok(capturedBody.contents[0].parts[0].text.includes('+ Light'));
+  } finally {
+    if (prevKey === undefined) delete process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+    else process.env.EXPO_PUBLIC_GEMINI_API_KEY = prevKey;
+  }
 });
