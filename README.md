@@ -22,6 +22,13 @@ chmod +x setup_env.sh run.sh
 ./run.sh                # = source .venv/bin/activate && npx expo start
 ```
 
+```bash
+source .venv/bin/activate
+npx expo login
+./run.sh --tunnel
+```
+
+
 Scan the QR code with Expo Go (Android) or the Camera app (iOS). Phone and computer must be on the same Wi-Fi; if they aren't (or the university network blocks it), use `./run.sh --tunnel`.
 
 Every new terminal: `source .venv/bin/activate` before running `npx expo ...` by hand.
