@@ -6,7 +6,6 @@ const ENTRIES = 'sweetdreams.entries.v1';
 
 export const defaultProfile = {
   onboarded: false,
-  movement: false,
   reminder: { enabled: true, hour: 22, minute: 0 },
   // Who this person is in care with. Set by the clinic, never from the app —
   // placeholder values until there is a backend to read them from.
@@ -14,6 +13,9 @@ export const defaultProfile = {
   // Development only: keep every drawing instead of one per day, so the
   // overlay can be filled with real lines rather than sample weeks.
   keepEveryTry: false,
+  // Until the PHQ-9 questionnaire exists, the level is simulated so the
+  // suggestions can be built and demonstrated. 12 lands in L2.
+  simulatedPhq9: 12,
 };
 
 async function read(key, fallback) {

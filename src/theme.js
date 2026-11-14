@@ -18,6 +18,7 @@ export const colors = {
   pink: '#f1b5d7',
   blue: '#cde5ff',
   blueDim: '#aacaea',
+  mint: '#b5ead7',
   ink: '#240d48',
 
   hairline: 'rgba(255,255,255,0.08)',

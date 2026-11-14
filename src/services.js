@@ -51,37 +51,7 @@ export async function syncReminder({ enabled, hour, minute }) {
   }
 }
 
-/** Ask for location access. Returns true if granted. */
-export async function requestMovement() {
-  if (!native) return false;
-  try {
-    const Location = require('expo-location');
-    const { granted } = await Location.requestForegroundPermissionsAsync();
-    return granted;
-  } catch {
-    return false;
-  }
-}
 
-/** One coarse position sample, or null. Gives up after a few seconds. */
-export async function sampleLocation() {
-  if (!native) return null;
-  try {
-    const Location = require('expo-location');
-    const { granted } = await Location.getForegroundPermissionsAsync();
-    if (!granted) return null;
-    const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 5000));
-    const fix = (async () =>
-      (await Location.getLastKnownPositionAsync()) ||
-      (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })))();
-    const pos = await Promise.race([fix, timeout]);
-    if (!pos) return null;
-    const { latitude, longitude, accuracy } = pos.coords;
-    return { latitude, longitude, accuracy, at: new Date(pos.timestamp).toISOString() };
-  } catch {
-    return null;
-  }
-}
 
 export function tap() {
   if (!native) return;

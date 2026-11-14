@@ -4,7 +4,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card, Header, Toggle } from '../components/Chrome';
 import { PrimaryButton } from '../components/Buttons';
 import TimeSheet from '../components/TimeSheet';
-import { requestMovement } from '../services';
 import { formatTime } from '../line';
 import { card, colors, font, radius, space, type } from '../theme';
 
@@ -15,16 +14,9 @@ import { card, colors, font, radius, space, type } from '../theme';
  */
 export default function SetupScreen({ profile, onDone, onBack, editing = false }) {
   const insets = useSafeAreaInsets();
-  const [movement, setMovement] = useState(profile.movement);
   const [reminder, setReminder] = useState(profile.reminder);
   const [picking, setPicking] = useState(false);
   const care = profile.care ?? { therapist: 'Not connected', clinic: 'Not connected' };
-  const [keepEveryTry, setKeepEveryTry] = useState(!!profile.keepEveryTry);
-
-  const toggleMovement = async (on) => {
-    setMovement(on);
-    if (on && !(await requestMovement())) setMovement(false);
-  };
 
   return (
     <View style={styles.screen}>
@@ -36,14 +28,6 @@ export default function SetupScreen({ profile, onDone, onBack, editing = false }
           </Text>
 
           <Card style={styles.card}>
-            <View style={styles.row}>
-              <View>
-                <Text style={styles.rowLabel}>Movement</Text>
-                <Text style={styles.rowHint}>Location</Text>
-              </View>
-              <Toggle label="Movement" value={movement} onChange={toggleMovement} />
-            </View>
-            <View style={styles.divider} />
             <View style={styles.row}>
               <Pressable style={styles.reminder} onPress={() => setPicking(true)} hitSlop={8} accessibilityRole="button">
                 <Text style={styles.rowLabel}>Evening reminder</Text>
@@ -76,30 +60,13 @@ export default function SetupScreen({ profile, onDone, onBack, editing = false }
                 </View>
               </Card>
               <Text style={styles.note}>Set by your clinic. Ask them to change it.</Text>
-
-              {/* Development only: fills the overlay with real lines instead of
-                  sample weeks, by keeping every drawing rather than one a day. */}
-              {__DEV__ && (
-                <>
-                  <Text style={styles.sectionLabel}>Testing</Text>
-                  <Card style={styles.card}>
-                    <View style={styles.row}>
-                      <View>
-                        <Text style={styles.rowLabel}>Keep every try</Text>
-                        <Text style={styles.rowHint}>Each drawing is kept, not replaced</Text>
-                      </View>
-                      <Toggle label="Keep every try" value={keepEveryTry} onChange={setKeepEveryTry} />
-                    </View>
-                  </Card>
-                </>
-              )}
             </>
           )}
         </View>
 
         <PrimaryButton
           title={editing ? 'Save' : 'Continue'}
-          onPress={() => onDone({ movement, reminder, keepEveryTry })}
+          onPress={() => onDone({ reminder })}
         />
       </View>
 
@@ -136,7 +103,6 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   note: { fontFamily: font.regular, fontSize: 12, color: colors.faint, marginTop: 10, marginLeft: 4 },
-  rowHint: { fontFamily: font.regular, fontSize: 12, color: colors.faint, marginTop: 2 },
   divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
   reminder: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   badge: {

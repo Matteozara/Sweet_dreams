@@ -24,9 +24,9 @@
         }
       ],
       [
-        "expo-location",
+        "expo-calendar",
         {
-          "locationWhenInUsePermission": "Sweet Dreams notes where you are when you close the day, if you allow movement."
+          "calendarPermission": "Sweet Dreams adds activities you schedule to your calendar."
         }
       ],
       "expo-notifications",

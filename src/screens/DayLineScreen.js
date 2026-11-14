@@ -310,7 +310,7 @@ export default function DayLineScreen({ onSubmit, onBack, onSettings }) {
         </Card>
 
         <View style={styles.actions}>
-          <PrimaryButton title="Close Today" onPress={close} disabled={!complete} />
+          <PrimaryButton title="Continue" onPress={close} disabled={!complete} />
           <GhostButton
             title="Redraw"
             onPress={redraw}

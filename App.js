@@ -16,8 +16,9 @@ import ReflectionScreen from './src/screens/ReflectionScreen';
 import DayLineScreen from './src/screens/DayLineScreen';
 import RestScreen from './src/screens/RestScreen';
 import CalendarScreen from './src/screens/CalendarScreen';
+import SuggestionsScreen from './src/screens/SuggestionsScreen';
 import { clearAllData, defaultProfile, loadAll, sampleEntries, saveEntries, saveProfile, upsertEntry } from './src/storage';
-import { sampleLocation, syncReminder } from './src/services';
+import { syncReminder } from './src/services';
 import { analyzeVoiceState } from './src/voiceState';
 import { analyzeContentState, answerText } from './src/contentState';
 import { scoreDayLine, scoreDayLineDetailed } from './src/analysis/dayScore';
@@ -67,6 +68,7 @@ export default function App() {
   const [tab, setTab] = useState('reflection');
   const [draft, setDraft] = useState(null); // tonight's answer, while the line is being drawn
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [suggesting, setSuggesting] = useState(false); // the step between the line and Rest
   const keyboardOpen = useKeyboardOpen();
 
   useEffect(() => {
@@ -91,13 +93,13 @@ export default function App() {
   const today = [...entries].reverse().find((e) => e.date === dayKey());
   const latest = today ?? entries[entries.length - 1];
 
-  const finishSetup = ({ movement, reminder, keepEveryTry }) => {
-    updateProfile({ movement, reminder, keepEveryTry, onboarded: true });
+  const finishSetup = ({ reminder }) => {
+    updateProfile({ reminder, onboarded: true });
     syncReminder(reminder);
   };
 
-  const saveSettings = ({ movement, reminder, keepEveryTry }) => {
-    updateProfile({ movement, reminder, keepEveryTry });
+  const saveSettings = ({ reminder }) => {
+    updateProfile({ reminder });
     syncReminder(reminder);
     setSettingsOpen(false);
   };
@@ -114,7 +116,8 @@ export default function App() {
     const next = upsertEntry(entries, entry, { keepEveryTry: __DEV__ && profile.keepEveryTry });
     updateEntries(next);
     setDraft(null);
-    setTab('rest'); // the evening ends in the wind-down screen
+    setSuggesting(true); // suggestions first, then the wind-down
+    setTab('rest');
     // These arrive after the evening is closed, and are added to the entry when they do.
     const patchEntry = (patch) =>
       setEntries((list) => {
@@ -122,9 +125,6 @@ export default function App() {
         saveEntries(patched);
         return patched;
       });
-    if (profile.movement) {
-      sampleLocation().then((location) => location && patchEntry({ location }));
-    }
     if (entry.answer.type === 'audio') {
       analyzeVoiceState(entry.answer.uri).then((voiceState) => voiceState && patchEntry({ voiceState }));
     }
@@ -160,6 +160,16 @@ export default function App() {
         profile={profile}
         onDone={saveSettings}
         onBack={() => setSettingsOpen(false)}
+      />
+    );
+  } else if (suggesting) {
+    // Its own step in the evening, so the tabs step aside like the day line.
+    key = 'suggestions';
+    screen = (
+      <SuggestionsScreen
+        score={profile.simulatedPhq9}
+        onDone={() => setSuggesting(false)}
+        onSettings={openSettings}
       />
     );
   } else if (draft) {
