@@ -1,26 +1,33 @@
 # Sweet Dreams
 
-Prototype of a mental-health check-in app (React Native + Expo).
+Source code for our entry in Aalto University’s "Beyond the Clinic" challenge at Junction 2026
 
-## Flow
+When clinical treatment ends, the risk of relapse doesn't. Once active treatment is over, patients often may have little to no scheduled contact with their clinician, and the warning signs of a relapse tend to build quietly until they are already struggling again. Sweet Dreams keeps that connection open with a short, effortless nightly ritual that lets clinicians follow patients between sessions and after treatment has ended, without turning reporting into a chore.
 
-1. **Welcome**: "Continue with Google" (placeholder: no real OAuth yet).
-2. **Setup**: what we may measure (movement / location) and the evening reminder time.
-3. **Reflection**: one card, "How was your day?", answered by voice or by keyboard.
-4. **The Day Line**: one line, left to right (morning to night), top is light, bottom is heavy.
-5. **Rest**: sleeping moon, "Goodnight.", and a way into your progress.
-6. **Analysis**: every line layered (oldest faintest, tonight brightest) and the last seven joined end to end.
+Each night, Sweet Dreams invites the user to do two things:
 
-The look follows the Stitch "Pastel Galaxy" design system (tokens in `src/theme.js`).
+1. Reflect briefly on their day, by voice or text.
+2. Draw a line with their finger that represents how they felt during the day.
 
-Profile and entries are stored on the device with AsyncStorage. Each entry keeps the answer
-(text with typing timings, or the audio file URI), the line, the raw finger motion with
-timestamps, and a location sample if movement is allowed. In development builds the Analysis
-screen has a "Load a sample week" button for demos.
+The central idea is that how someone answers can carry just as much information as what they answer. The user is asked to just express themselves, and the app listens to the different signals emitted. Because the ritual is light enough to maintain over time, it can carry on long after active treatment has ended.
+
+---
+
+## How it works
+1.  **Capture.** Live transcription and passive collection of drawing kinematics, typing dynamics, and voice features.
+2.  **Analyze.** A multimodal model interprets text, audio, and drawings together alongside the objective features.
+3.  **Score.** The data is turned into longitudinal scores, which stay hidden from the patient to avoid possible anxiety and score-chasing.
+4.  **Review.** The patient's clinician has access to a dashboard with trend lines, component scores, and breakdowns of the patient's signals.
+5.  **Alert.** If aggregated scores fall below a threshold, the clinician is notified and can reach out early, even if the patient has not been seen in months.
+6.  **Support.** The patient receives personalized suggestions for soothing activities based on their inferred state.
+
+---
 
 ## Setup (Linux / macOS)
 
 Requirements: `python3` (with `venv`) and the **Expo Go** app on your phone.
+
+Copy `.env.example` to `.env`, set `EXPO_PUBLIC_GEMINI_API_KEY`, and restart with `./run.sh --clear`.
 
 ```bash
 chmod +x setup_env.sh run.sh
@@ -34,36 +41,9 @@ npx expo login
 ./run.sh --tunnel
 ```
 
-
 Scan the QR code with Expo Go (Android) or the Camera app (iOS). Phone and computer must be on the same Wi-Fi; if they aren't (or the university network blocks it), use `./run.sh --tunnel`.
 
-Every new terminal: `source .venv/bin/activate` before running `npx expo ...` by hand.
-
-## Live transcription
-
-While recording, the words appear under the waveform ("Hide words" turns the display off).
-Microphone audio is streamed to the Gemini Live API (`gemini-3.5-transcribe-live`) and the
-transcript is saved with the entry. After stopping, the transcript becomes a text field so it
-can be corrected; the original recognised text is kept alongside when it was edited. Copy `.env.example` to `.env`, set
-`EXPO_PUBLIC_GEMINI_API_KEY`, and restart with `./run.sh --clear`. Without a key the app
-records as before, with no transcript.
-
-## Voice state
-
-When an evening answered by voice is closed, the recording is sent once to the Gemini
-Interactions API (`gemini-4-hydrogen`, see `src/voiceState.js`). It is judged on how it sounds,
-not on the words: prosody (pitch, energy, speaking rate, pauses) and voice quality. The reply is
-a score from 0 (depleted, strained) to 10 (calm, energised) and a short written analysis, saved on
-the entry as `voiceState` and shown under "How you sounded" on the Analysis screen. It uses the
-same `EXPO_PUBLIC_GEMINI_API_KEY`; without a key, or offline, the entry is simply saved without it.
-
-## Content state
-
-Every closed evening, typed or spoken, also has its words analysed (`src/contentState.js`): the
-typed text, or the transcript of the recording, is sent once to the same Gemini model. The reply
-is a score from 0 (a very heavy day) to 10 (a very good one) and a short written analysis of the
-themes and emotional tone, saved on the entry as `contentState` and shown under "What you said"
-on the Analysis screen. A spoken answer needs a transcript, so it needs the key during recording.
+Every new terminal: `source .venv/bin/activate` before running `npx expo ...`.
 
 ## Project structure
 
