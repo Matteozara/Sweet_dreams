@@ -43,6 +43,6 @@ const styles = StyleSheet.create({
   title: { ...type.display, fontSize: 36, lineHeight: 44 },
   sub: { ...type.bodySm, marginTop: 6 },
   todayWrap: { alignSelf: 'stretch', marginTop: 28 },
-  today: { marginHorizontal: 24 },
+  today: { width: '100%' },
   actions: { gap: 10 },
 });

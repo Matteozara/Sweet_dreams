@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { analyzeDrawing, DP_PER_MM } from '../drawing.js';
 import { analyzeTypingEntry } from '../typing.js';
 import { analyzeVoiceEntry } from '../voice.js';
-import { computeBaseline, normalizeFeature } from '../normalization.js';
+import { classifyMotorState, computeBaseline, normalizeFeature, SIGMA_MIN } from '../normalization.js';
 import { scoreDayLine } from '../dayScore.js';
 import { buildWeeklyAnalysis } from '../weekly.js';
+import { suggestionsForEntry } from '../../activities.js';
 
 test('drawing: constant-speed stroke computes accurate speed and quality', () => {
   const w = 320;
@@ -150,7 +151,72 @@ test('normalization & weekly grouping: excludes 5 practice sessions and normaliz
   const weekly = buildWeeklyAnalysis(entries);
   assert.ok(weekly.weeks.length >= 2);
   assert.ok(weekly.weeks[0].drawing);
+  assert.equal(weekly.weeks[0].drawing.exploratory, true);
   assert.ok(weekly.weeks[0].typing);
+});
+
+test('normalization: zero-inflated baseline (MAD = 0 at k = 0) uses SIGMA_MIN floor instead of returning null', () => {
+  // 5 practice + 10 baseline sessions where 8/10 baseline evenings have 0 drawing pauses and 0 long voice pauses
+  const rows = Array.from({ length: 15 }, (_, i) => {
+    const baseIdx = i - 5;
+    const hasRarePause = baseIdx >= 8;
+    return {
+      drawingSpeed: 38 + (i % 4),
+      drawingPauseTimeMs: baseIdx >= 0 && hasRarePause ? 140 : 0,
+      ikdMedianMs: 165 + (i % 5) * 4,
+      ikdMadMs: 28 + (i % 3) * 3,
+      backspaceRate: 0.04,
+      typingSessionMs: 14000,
+      voicePauseRatio: 0.16 + (i % 3) * 0.01,
+      voiceLongPausesPerMin: baseIdx >= 0 && hasRarePause ? 1.2 : 0,
+    };
+  });
+
+  const base = computeBaseline(rows, { phq9: 1 });
+  assert.equal(base.ready, true);
+  assert.equal(base.k, 0);
+  assert.equal(base.anyFloorUsed, true);
+  assert.equal(base.stats.drawingPauseTimeMs.med, 0);
+  assert.equal(base.stats.drawingPauseTimeMs.rawS, 0);
+  assert.equal(base.stats.drawingPauseTimeMs.usedFloor, true);
+  assert.equal(base.stats.drawingPauseTimeMs.s, SIGMA_MIN.drawingPauseTimeMs);
+
+  // 0 ms pause stays at 0 SD; a 360 ms relapse hesitation yields +3.0 SD instead of null
+  assert.equal(normalizeFeature(0, base.stats.drawingPauseTimeMs), 0);
+  assert.equal(normalizeFeature(360, base.stats.drawingPauseTimeMs), 3);
+  assert.equal(normalizeFeature(1.6, base.stats.voiceLongPausesPerMin), 2);
+});
+
+test('classifyMotorState: separates personal equilibrium, psychomotor slowing, and agitation / dysregulation', () => {
+  // 0 SD neighborhood -> healthy personal equilibrium
+  assert.equal(
+    classifyMotorState({ signedPaceZ: 0.25, dysregulationZ: 0.65, ikdMadZ: 0.1, backspaceZ: -0.2, nightShare: 0 }).code,
+    'equilibrium'
+  );
+
+  // Large negative shift (< -1.5 SD) -> psychomotor slowing / retardation
+  assert.equal(
+    classifyMotorState({ signedPaceZ: -1.85, dysregulationZ: 1.9, ikdMadZ: 1.1, backspaceZ: 0.8, nightShare: 0 }).code,
+    'slowing'
+  );
+
+  // Large positive speed spike (> +1.8 SD) -> possible agitation / dysregulation (not extra healthy)
+  assert.equal(
+    classifyMotorState({ signedPaceZ: 2.05, dysregulationZ: 1.95, ikdMadZ: 0.4, backspaceZ: 0.3, nightShare: 0 }).code,
+    'agitation_watch'
+  );
+
+  // Moderately fast pace (+1.45 SD) paired with high IKD MAD / backspaces / nocturnal typing -> agitation_watch
+  assert.equal(
+    classifyMotorState({ signedPaceZ: 1.45, dysregulationZ: 1.7, ikdMadZ: 1.6, backspaceZ: 1.5, nightShare: 0.35 }).code,
+    'agitation_watch'
+  );
+
+  // Near-zero mean pace but high |z| dispersion -> dysregulated
+  assert.equal(
+    classifyMotorState({ signedPaceZ: -0.2, dysregulationZ: 1.75, ikdMadZ: 0.9, backspaceZ: 0.9, nightShare: 0 }).code,
+    'dysregulated'
+  );
 });
 
 test('dayScore: calls Gemini API with drawing meaning and clamps 0..10 score', async () => {
@@ -192,4 +258,55 @@ test('dayScore: calls Gemini API with drawing meaning and clamps 0..10 score', a
     if (prevKey === undefined) delete process.env.EXPO_PUBLIC_GEMINI_API_KEY;
     else process.env.EXPO_PUBLIC_GEMINI_API_KEY = prevKey;
   }
+});
+
+test('activities: suggestionsForEntry picks different activity tiers across all 5 score bands', () => {
+  const fixedDate = new Date(2026, 10, 14);
+  const brightDay = suggestionsForEntry(
+    {
+      line: { points: [{ x: 0, y: 0.12 }, { x: 1, y: 0.1 }] }, // near top (+ Good) -> ~8.9/10
+      contentState: { score: 9 },
+    },
+    { date: fixedDate }
+  );
+  const steadyDay = suggestionsForEntry(
+    {
+      line: { points: [{ x: 0, y: 0.28 }, { x: 1, y: 0.25 }] }, // ~7.3/10
+      contentState: { score: 7 },
+    },
+    { date: fixedDate }
+  );
+  const mixedDay = suggestionsForEntry(
+    {
+      line: { points: [{ x: 0, y: 0.48 }, { x: 1, y: 0.45 }] }, // ~5.3/10
+      contentState: { score: 5 },
+    },
+    { date: fixedDate }
+  );
+  const heavyDay = suggestionsForEntry(
+    {
+      line: { points: [{ x: 0, y: 0.68 }, { x: 1, y: 0.7 }] }, // ~3.1/10
+      contentState: { score: 3 },
+    },
+    { date: fixedDate }
+  );
+  const veryHardDay = suggestionsForEntry(
+    {
+      line: { points: [{ x: 0, y: 0.88 }, { x: 1, y: 0.92 }] }, // near bottom (- Bad) -> ~1.1/10
+      contentState: { score: 1 },
+    },
+    { date: fixedDate }
+  );
+
+  assert.equal(brightDay.level.id, 'L0');
+  assert.equal(steadyDay.level.id, 'L1');
+  assert.equal(mixedDay.level.id, 'L2');
+  assert.equal(heavyDay.level.id, 'L3');
+  assert.equal(veryHardDay.level.id, 'L4');
+  assert.equal(brightDay.items.length, 3);
+  assert.equal(veryHardDay.items.length, 3);
+  assert.notDeepEqual(
+    brightDay.items.map((i) => i.title),
+    veryHardDay.items.map((i) => i.title)
+  );
 });

@@ -10,7 +10,7 @@ import { askGemini, stateFrom, warner } from './gemini';
 const MAX_BYTES = 14 * 1024 * 1024;
 const warn = warner('voiceState');
 
-const PROMPT = `You are listening to a short spoken evening reflection ("How was your day?").
+const PROMPT = `You are listening to a short spoken evening reflection ("How did you feel today?").
 Judge the speaker's state from HOW they sound, not from what they say. Base it on:
 - Prosody: pitch level and variability, energy and loudness, speaking rate, pauses and hesitations.
 - Voice quality: breathiness, creakiness, tension or strain, tremor, flatness, warmth.

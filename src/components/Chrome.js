@@ -37,8 +37,14 @@ export function Header({ onBack, onSettings }) {
         <Text style={styles.wordmark}>Sweet Dreams</Text>
       </View>
       {onSettings && (
-        <Press onPress={onSettings} hitSlop={16} scaleTo={0.88} accessibilityLabel="Settings">
-          <Icon name="gear" size={17} color={colors.faint} strokeWidth={1.5} />
+        <Press
+          onPress={onSettings}
+          hitSlop={16}
+          scaleTo={0.88}
+          innerStyle={styles.gearBtn}
+          accessibilityLabel="Settings"
+        >
+          <Icon name="gear" size={23} color={colors.muted} strokeWidth={1.75} />
         </Press>
       )}
     </View>
@@ -145,6 +151,7 @@ const styles = StyleSheet.create({
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   wordmark: { fontFamily: font.medium, fontSize: 14, letterSpacing: 0.3, color: 'rgba(255,255,255,0.9)' },
+  gearBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginRight: -6 },
 
   nav: {
     borderTopWidth: 1,

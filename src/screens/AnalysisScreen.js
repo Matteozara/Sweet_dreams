@@ -32,21 +32,23 @@ function useWidth() {
 function Overlay({ entries }) {
   const [w, onLayout] = useWidth();
   const h = 180;
+  const inset = 14;
+  const drawW = Math.max(0, w - inset * 2);
   const shown = entries.slice(-30);
   const older = shown.slice(0, -1);
-  const latest = toPixels(shown[shown.length - 1].line.points, w, h, { pad: 10 });
+  const latest = toPixels(shown[shown.length - 1].line.points, drawW, h, { x0: inset, pad: 14, spanX: true });
   return (
     <View style={styles.plot} onLayout={onLayout}>
       {w > 0 && (
         <Svg width={w} height={h}>
           <Defs>
-            <LineGradient x2={w} />
+            <LineGradient x1={inset} x2={w - inset} />
           </Defs>
-          <Line x1={0} x2={w} y1={h / 2} y2={h / 2} stroke={colors.muted} strokeOpacity={0.14} strokeDasharray="3 6" />
+          <Line x1={inset} x2={w - inset} y1={h / 2} y2={h / 2} stroke={colors.muted} strokeOpacity={0.14} strokeDasharray="3 6" />
           {older.map((e, i) => (
             <Path
               key={e.id}
-              d={smoothPath(toPixels(e.line.points, w, h, { pad: 10 }))}
+              d={smoothPath(toPixels(e.line.points, drawW, h, { x0: inset, pad: 14, spanX: true }))}
               stroke={colors.lilac}
               strokeOpacity={0.1 + 0.4 * ((i + 1) / older.length)}
               strokeWidth={1.6}
@@ -79,7 +81,9 @@ function Week({ entries, selectedId, onSelect }) {
   const inset = 14;
   const col = (w - inset * 2) / days.length;
   const today = dayKey();
-  const joined = days.flatMap((e, i) => toPixels(e.line.points, col, h, { x0: inset + i * col, pad: 12 }));
+  const joined = days.flatMap((e, i) =>
+    toPixels(e.line.points, col, h, { x0: inset + i * col, pad: 12, spanX: true })
+  );
   return (
     <View style={styles.plot} onLayout={onLayout}>
       {w > 0 && (
@@ -177,8 +181,21 @@ function Badge({ text, tone = 'neutral' }) {
       ? 'rgba(205,229,255,0.14)'
       : tone === 'warn'
       ? 'rgba(241,181,215,0.16)'
+      : tone === 'amber'
+      ? 'rgba(255,216,190,0.16)'
+      : tone === 'info'
+      ? 'rgba(212,187,255,0.14)'
       : 'rgba(255,255,255,0.08)';
-  const fg = tone === 'ok' ? colors.blue : tone === 'warn' ? colors.pink : colors.muted;
+  const fg =
+    tone === 'ok'
+      ? colors.blue
+      : tone === 'warn'
+      ? colors.pink
+      : tone === 'amber'
+      ? '#ffd8be'
+      : tone === 'info'
+      ? colors.lilacPale
+      : colors.muted;
   return (
     <View style={[styles.badge, { backgroundColor: bg }]}>
       <Text style={[styles.badgeText, { color: fg }]}>{text}</Text>
@@ -393,15 +410,36 @@ export default function AnalysisScreen({ entries, onLoadSample, onScoreEntries, 
 
           <Card style={styles.card}>
             <View style={styles.cardHead}>
-              <Text style={styles.cardTitle}>Remission baseline</Text>
+              <Text style={styles.cardTitle}>Remission baseline &amp; equilibrium</Text>
               <Badge
-                text={baseline.ready ? 'Active (k=0)' : `${baseline.baselineSessions}/${baseline.requiredSessions} sessions`}
-                tone={baseline.ready ? 'ok' : 'neutral'}
+                text={
+                  baseline.ready && activeDay?.motorState
+                    ? activeDay.motorState.shortLabel
+                    : baseline.ready
+                    ? 'Active (k=0)'
+                    : `${baseline.baselineSessions}/${baseline.requiredSessions} sessions`
+                }
+                tone={
+                  baseline.ready && activeDay?.motorState
+                    ? activeDay.motorState.tone
+                    : baseline.ready
+                    ? 'ok'
+                    : 'neutral'
+                }
               />
             </View>
+            {baseline.ready && activeDay?.motorState && (
+              <View style={styles.metrics}>
+                <MetricRow label="State vs. baseline" value={activeDay.motorState.label} />
+                <MetricRow label="Signed motor pace" value={fmtZ(activeDay.signedPaceZ)} />
+                <MetricRow label="Dysregulation (mean |z|)" value={fmtZ(activeDay.dysregulationZ, true)} />
+              </View>
+            )}
             <Text style={styles.note}>
-              First 5 sessions excluded (practice effect). Local MAD×1.4826 normalization requires{' '}
-              {baseline.requiredSessions} valid sessions with PHQ-9 {'<'} 5.
+              First 5 sessions excluded (practice effect). Values near 0 z (4–6/10) reflect healthy personal
+              equilibrium; drops {'<'} −1.5 z suggest slowing, while spikes {'>'} +1.8 z or elevated |z| suggest
+              possible agitation/dysregulation.
+              {baseline.anyFloorUsed ? ' Zero-pause baseline features use physiological σ_min floors (k=0).' : ''}
               {baseline.extendRecommended ? ' Slope is significant: baseline window extended.' : ''}
             </Text>
           </Card>
@@ -409,19 +447,22 @@ export default function AnalysisScreen({ entries, onLoadSample, onScoreEntries, 
           {activeDay && (
             <Card style={styles.card}>
               <View style={styles.cardHead}>
-                <Text style={styles.cardTitle}>Finger drawing (v2)</Text>
-                {activeDay.drawing ? (
-                  <Badge
-                    text={
-                      activeDay.drawing.lowQualityCount === 0
-                        ? `Valid (${Math.round(activeDay.drawing.medianDtMs)} ms)`
-                        : 'Low sample rate'
-                    }
-                    tone={activeDay.drawing.lowQualityCount === 0 ? 'ok' : 'warn'}
-                  />
-                ) : (
-                  <Badge text="No motion data" />
-                )}
+                <Text style={styles.cardTitle}>Finger drawing · Exploratory</Text>
+                <View style={styles.badgeGroup}>
+                  <Badge text="Exploratory" tone="info" />
+                  {activeDay.drawing ? (
+                    <Badge
+                      text={
+                        activeDay.drawing.lowQualityCount === 0
+                          ? `Valid (${Math.round(activeDay.drawing.medianDtMs)} ms)`
+                          : 'Low sample rate'
+                      }
+                      tone={activeDay.drawing.lowQualityCount === 0 ? 'ok' : 'warn'}
+                    />
+                  ) : (
+                    <Badge text="No motion data" />
+                  )}
+                </View>
               </View>
               {activeDay.drawing ? (
                 <View style={styles.metrics}>
@@ -440,6 +481,10 @@ export default function AnalysisScreen({ entries, onLoadSample, onScoreEntries, 
                     z={activeDay.zScores ? fmtZ(activeDay.zScores.drawingPauseTimeMs) : null}
                   />
                   <MetricRow label="Finger lifts" value={fmtNum(activeDay.drawing.fingerLifts, 0)} />
+                  <Text style={styles.note}>
+                    Exploratory kinematics: emotional curve shape (peaks/valleys) and memory-recall pauses influence
+                    stroke speed and pause counts alongside pure motor tempo.
+                  </Text>
                 </View>
               ) : (
                 <Text style={styles.note}>No motion data for this day's line to compute Savitzky–Golay kinematics.</Text>
@@ -481,7 +526,11 @@ export default function AnalysisScreen({ entries, onLoadSample, onScoreEntries, 
                     value={fmtMs(activeDay.typing.ikdMadMs)}
                     z={activeDay.zScores ? fmtZ(activeDay.zScores.ikdMadMs) : null}
                   />
-                  <MetricRow label="Backspace rate" value={fmtPct(activeDay.typing.backspaceRate)} />
+                  <MetricRow
+                    label="Backspace rate"
+                    value={fmtPct(activeDay.typing.backspaceRate)}
+                    z={activeDay.zScores ? fmtZ(activeDay.zScores.backspaceRate) : null}
+                  />
                   <MetricRow
                     label="Session length"
                     value={fmtSec(activeDay.typing.medianSessionLengthMs, 1)}
@@ -529,7 +578,11 @@ export default function AnalysisScreen({ entries, onLoadSample, onScoreEntries, 
                     z={activeDay.zScores ? fmtZ(activeDay.zScores.voicePauseRatio) : null}
                   />
                   <MetricRow label="Median pause length" value={fmtMs(activeDay.voice.medianPauseMs)} />
-                  <MetricRow label="Long pauses / min (≥ 1 s)" value={fmtNum(activeDay.voice.longPausesPerMin, 1)} />
+                  <MetricRow
+                    label="Long pauses / min (≥ 1 s)"
+                    value={fmtNum(activeDay.voice.longPausesPerMin, 1)}
+                    z={activeDay.zScores ? fmtZ(activeDay.zScores.voiceLongPausesPerMin) : null}
+                  />
                   <MetricRow label="Loudness CV" value={fmtNum(activeDay.voice.loudnessCV, 2)} />
                   <MetricRow
                     label="Estimated SNR"
@@ -619,6 +672,7 @@ const styles = StyleSheet.create({
 
   card: { ...card, borderRadius: radius.lg, padding: 18, gap: 12 },
   cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  badgeGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   cardTitle: { fontFamily: font.medium, fontSize: 13, letterSpacing: 0.1, color: colors.text },
   badge: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: radius.full },
   badgeText: { fontFamily: font.medium, fontSize: 11 },

@@ -16,9 +16,20 @@ export function smoothPath(pts) {
   return `${d} L${f(last.x)} ${f(last.y)}`;
 }
 
-/** Map normalized points into a pixel box. */
-export function toPixels(points, w, h, { x0 = 0, pad = 0 } = {}) {
-  return points.map((p) => ({ x: x0 + p.x * w, y: pad + p.y * (h - pad * 2) }));
+/** Map normalized points into a pixel box. When `spanX` is true, stretches `[minX..maxX]` across `[0..w]`. */
+export function toPixels(points, w, h, { x0 = 0, pad = 0, spanX = false } = {}) {
+  if (!points?.length) return [];
+  let minX = 0;
+  let rangeX = 1;
+  if (spanX && points.length > 1) {
+    minX = points[0].x;
+    const maxX = points[points.length - 1].x;
+    if (maxX - minX > 1e-4) rangeX = maxX - minX;
+  }
+  return points.map((p) => ({
+    x: x0 + ((p.x - minX) / rangeX) * w,
+    y: pad + p.y * (h - pad * 2),
+  }));
 }
 
 /** Keep at most `max` points, always keeping the first and the last. */

@@ -17,6 +17,7 @@
   --lilac-pale: #ebdcff;
   --pink: #f1b5d7;
   --rose-strong: #f497c0;
+  --peach: #ffd8be;
   --blue: #cde5ff;
   --blue-dim: #aacaea;
   --ink: #240d48;
@@ -286,13 +287,19 @@ select.select {
 }
 
 .pill-amber {
-  background: rgba(212, 187, 255, 0.16);
-  color: var(--lilac-pale);
+  background: rgba(255, 216, 190, 0.16);
+  color: var(--peach);
 }
 
 .pill-info {
   background: rgba(235, 220, 255, 0.12);
   color: var(--lilac-pale);
+}
+
+.pill-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* Main Content Layout */
@@ -350,6 +357,11 @@ select.select {
   border-color: rgba(212, 187, 255, 0.24);
 }
 
+.status-banner.agitation {
+  background: linear-gradient(100deg, rgba(255, 216, 190, 0.16) 0%, var(--glass) 52%);
+  border-color: rgba(255, 216, 190, 0.3);
+}
+
 .status-left {
   display: flex;
   align-items: center;
@@ -373,6 +385,11 @@ select.select {
 .status-banner.amber .status-dot {
   background: var(--lilac);
   box-shadow: 0 0 14px rgba(212, 187, 255, 0.75);
+}
+
+.status-banner.agitation .status-dot {
+  background: var(--peach);
+  box-shadow: 0 0 14px rgba(255, 216, 190, 0.8);
 }
 
 .status-headline {
@@ -651,6 +668,13 @@ select.select {
   color: var(--faint);
 }
 
+.mod-note {
+  margin: -4px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--faint);
+}
+
 .scale-legend {
   display: flex;
   align-items: center;
@@ -661,10 +685,16 @@ select.select {
 }
 
 .scale-bar {
-  width: 108px;
+  width: 124px;
   height: 8px;
   border-radius: var(--radius-full);
-  background: linear-gradient(90deg, rgba(244, 151, 192, 0.9), rgba(212, 187, 255, 0.14) 50%, rgba(205, 229, 255, 0.95));
+  background: linear-gradient(
+    90deg,
+    rgba(244, 151, 192, 0.9) 0%,
+    rgba(212, 187, 255, 0.16) 46%,
+    rgba(205, 229, 255, 0.85) 74%,
+    rgba(255, 216, 190, 0.95) 100%
+  );
 }
 
 /* Inspector & Metric Rows (matches AnalysisScreen.js metricRow) */
